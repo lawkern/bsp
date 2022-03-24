@@ -4,4 +4,4 @@ then
     exit 1
 fi
 
-spawn-fcgi -a127.0.3.1 -p$1 ../build/bsp
+spawn-fcgi -a127.0.0.1 -p$1 ../build/bsp
