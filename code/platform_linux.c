@@ -3,7 +3,6 @@
 /* /////////////////////////////////////////////////////////////////////////// */
 
 #include <fcgiapp.h>
-
 #include "bsp.c"
 
 int
@@ -22,13 +21,7 @@ main(int argument_count, char **arguments)
       Request_State *request = &request_;
 
       initialize_request(request);
-
-      OUT("Content-type: text/html\n");
-      OUT("Status: 200\n");
-      OUT("\n");
-      OUT("<h1>Welcome to the next big shitty platform!</h1>");
-
-      debug_output_cgi_metavariables(request);
+      process_request(request);
 
       FCGX_Finish_r(&fcgx);
    }

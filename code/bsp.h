@@ -3,6 +3,9 @@
 /* (c) copyright 2022 Lawrence D. Kern /////////////////////////////////////// */
 /* /////////////////////////////////////////////////////////////////////////// */
 
+#include <stdbool.h>
+#include <string.h>
+
 #define OUT(...) FCGX_FPrintF(request->fcgx.out, __VA_ARGS__)
 #define ERR(...) FCGX_FPrintF(request->fcgx.err, __VA_ARGS__)
 
