@@ -22,11 +22,60 @@ PLATFORM_DEALLOCATE(deallocate)
    }
 }
 
+static
+PLATFORM_READ_FILE(read_file)
+{
+   // TODO(law): Implement this with os primitives.
+
+   Platform_File result = {0};
+
+   FILE *file = fopen(file_name, "rb");
+   if (file)
+   {
+      fseek(file, 0, SEEK_END);
+      long size = ftell(file);
+      fseek(file, 0, SEEK_SET);
+
+      if(size >= 0 && size <= UINT32_MAX)
+      {
+         result.size = size;
+
+         // NOTE(law): This explicitly null terminates the file contents so it
+         // can be used as a string.
+         result.memory = allocate(result.size + 1);
+         if(result.memory)
+         {
+            result.memory[result.size] = 0;
+            fread(result.memory, 1, result.size, file);
+         }
+         else
+         {
+            // TODO(law): Log error.
+            result.size = 0;
+         }
+      }
+      else
+      {
+         // TODO(law): Log error.
+      }
+
+      fclose(file);
+   }
+   else
+   {
+      // TODO(law): Log error.
+   }
+
+   return result;
+}
+
 int
 main(int argument_count, char **arguments)
 {
    (void)argument_count;
    (void)arguments;
+
+   initialize_templates(&global_html_templates);
 
    FCGX_Request fcgx;
    FCGX_Init();

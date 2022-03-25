@@ -4,6 +4,8 @@
 
 #include "bsp.h"
 
+static Key_Value_Table global_html_templates;
+
 static void
 initialize_arena(Memory_Arena *arena, unsigned char *base_address, size_t size)
 {
@@ -33,6 +35,23 @@ strings_are_equal(char *a, char *b)
    // TODO(law): Remove dependency on string.h.
    bool result = (strcmp(a, b) == 0);
    return result;
+}
+
+static unsigned long
+hash_string(char *string)
+{
+   // This is the djb2 hash function referenced at
+   // http://www.cse.yorku.ca/~oz/hash.html
+
+    unsigned long result = 5381;
+
+    int c;
+    while((c = *string++))
+    {
+       result = ((result << 5) + result) + c; /* result * 33 + c */
+    }
+
+    return result;
 }
 
 static Key_Value_Pair
@@ -87,23 +106,6 @@ consume_key_value_pair(Memory_Arena *arena, char **key_value_string)
    }
 
    return result;
-}
-
-static unsigned long
-hash_string(char *string)
-{
-   // This is the djb2 hash function referenced at
-   // http://www.cse.yorku.ca/~oz/hash.html
-
-    unsigned long result = 5381;
-
-    int c;
-    while((c = *string++))
-    {
-       result = ((result << 5) + result) + c; /* result * 33 + c */
-    }
-
-    return result;
 }
 
 static void
@@ -201,6 +203,59 @@ initialize_request(Request_State *request)
    }
 }
 
+// TODO(law): The working directory of the running program should be set to the
+// data directory, rather than the build directory..
+#define HTML_TEMPLATE_BASE_PATH "../data/html/"
+#define OUTPUT_HTML_TEMPLATE(path) \
+   output_html_template(request, HTML_TEMPLATE_BASE_PATH path)
+
+static void
+initialize_templates(Key_Value_Table *table)
+{
+   // NOTE(law): This is called once at program startup to read listed html
+   // tempates into memory. It assumes resources are released automatically when
+   // the program exits (i.e. this will leak if called more than once).
+
+   // TODO(law): New templates need to be manually added to the list here
+   // (rather than just scanning the html directory).
+
+   char *template_paths[] =
+   {
+     HTML_TEMPLATE_BASE_PATH "header.html",
+     HTML_TEMPLATE_BASE_PATH "index.html",
+     HTML_TEMPLATE_BASE_PATH "login.html",
+     HTML_TEMPLATE_BASE_PATH "404.html",
+   };
+
+   for(unsigned int index = 0; index < ARRAY_LENGTH(template_paths); ++index)
+   {
+      char *path = template_paths[index];
+      Platform_File template_file = read_file(path);
+      insert_key_value(table, path, (char *)template_file.memory);
+   }
+}
+
+static void
+output_html_template(Request_State *request, char *path)
+{
+   // NOTE(law): Because of the way this output method works, the contents of
+   // the html file is treated as a format string. Therefore, % symbols need to
+   // be escaped to work normally (assuming that no addtional arguments are
+   // passed to OUT()).
+
+   char *html = get_value(&global_html_templates, path);
+   if(html)
+   {
+      OUT(html);
+   }
+   else
+   {
+#if DEVELOPMENT_BUILD
+      OUT("<p>MISSING TEMPLATE: %s</p>", path);
+#endif
+   }
+}
+
 static void
 debug_output_request_data(Request_State *request)
 {
@@ -267,46 +322,21 @@ redirect_request(Request_State *request, char *path)
 }
 
 static void
-output_html_header(Request_State *request)
-{
-   OUT("<!DOCTYPE html>");
-   OUT("<link rel=\"stylesheet\" type=\"text/css\" href=\"/css/style.css\">");
-   OUT("<header><h1><a href=\"/\">Big Shitty Platform</a></h1></header>");
-}
-
-static void
 process_request(Request_State *request)
 {
    if(strings_are_equal(request->SCRIPT_NAME, "/"))
    {
       output_request_header(request, 200);
-      output_html_header(request);
-
-      OUT("<main>");
-      OUT("  <form method=\"post\" action=\"/login\" style=\"text-align: center; margin: auto; padding: 0; width: 50ch; max-width: 95%%;\">");
-      OUT("    <br>");
-      OUT("    <input type=\"text\" name=\"username\" placeholder=\"Username\" style=\"width: 100%%;\" required>");
-      OUT("    <br>");
-      OUT("    <br>");
-      OUT("    <input type=\"password\" name=\"password\" placeholder=\"Password\" style=\"width: 100%%;\" required>");
-      OUT("    <br>");
-      OUT("    <br>");
-      OUT("    <button type=\"submit\">Log in to BSP</button>");
-      OUT("  </form>");
-      OUT("</main>");
+      OUTPUT_HTML_TEMPLATE("header.html");
+      OUTPUT_HTML_TEMPLATE("index.html");
    }
    else if(strings_are_equal(request->SCRIPT_NAME, "/login"))
    {
       if(strings_are_equal(request->REQUEST_METHOD, "POST"))
       {
          output_request_header(request, 200);
-         output_html_header(request);
-
-         char *username = get_value(&request->form, "username");
-
-         OUT("<main>");
-         OUT("  <p style=\"text-align: center;\">The account <kbd>%s</kbd> does not exist.</p>", (username) ? username : "");
-         OUT("</main>");
+         OUTPUT_HTML_TEMPLATE("header.html");
+         OUTPUT_HTML_TEMPLATE("login.html");
       }
       else
       {
@@ -317,11 +347,8 @@ process_request(Request_State *request)
    else
    {
       output_request_header(request, 404);
-      output_html_header(request);
-
-      OUT("<main>");
-      OUT("  <h2>404: Page not found</h2>");
-      OUT("</main>");
+      OUTPUT_HTML_TEMPLATE("header.html");
+      OUTPUT_HTML_TEMPLATE("404.html");
    }
 
    debug_output_request_data(request);

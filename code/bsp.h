@@ -5,6 +5,8 @@
 
 #include <assert.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -21,6 +23,18 @@ static PLATFORM_ALLOCATE(allocate);
 
 #define PLATFORM_DEALLOCATE(name) void name(void *memory)
 static PLATFORM_DEALLOCATE(deallocate);
+
+typedef struct
+{
+   // NOTE(law): The file size uses 32 bits because of ReadFile() limitations on
+   // win32.
+
+   unsigned int size;
+   unsigned char *memory;
+} Platform_File;
+
+#define PLATFORM_READ_FILE(name) Platform_File name(char *file_name)
+static PLATFORM_READ_FILE(read_file);
 
 #define CGI_METAVARIABLES_LIST                  \
    X(AUTH_TYPE)                                 \
