@@ -3,11 +3,27 @@
 /* (c) copyright 2022 Lawrence D. Kern /////////////////////////////////////// */
 /* /////////////////////////////////////////////////////////////////////////// */
 
+#include <assert.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include <string.h>
+
+#define KILOBYTES(v) (1000LL * (v))
+#define MEGABYTES(v) (1000LL * KILOBYTES(v))
+
+#define KIBIBYTES(v) (1024LL * (v))
+#define MEBIBYTES(v) (1024LL * KIBIBYTES(v))
+
+#define ARRAY_LENGTH(a) (sizeof(a) / sizeof((a)[0]))
 
 #define OUT(...) FCGX_FPrintF(request->fcgx.out, __VA_ARGS__)
 #define ERR(...) FCGX_FPrintF(request->fcgx.err, __VA_ARGS__)
+
+#define PLATFORM_ALLOCATE(name) void *name(size_t size)
+static PLATFORM_ALLOCATE(allocate);
+
+#define PLATFORM_DEALLOCATE(name) void name(void *memory)
+static PLATFORM_DEALLOCATE(deallocate);
 
 #define CGI_METAVARIABLES_LIST                  \
    X(AUTH_TYPE)                                 \
@@ -40,14 +56,37 @@
 
 typedef struct
 {
+   size_t size;
+   size_t used;
+   unsigned char *base_address;
+} Memory_Arena;
+
+typedef struct
+{
+   char *key;
+   char *value;
+} Key_Value_Pair;
+
+typedef struct
+{
+   unsigned int count;
+   Key_Value_Pair entries[256];
+} Key_Value_Table;
+
+typedef struct
+{
    // NOTE(law): The contents of Request_State is intended to persist for the
    // lifetime of a single request made by a single user.
 
    FCGX_Request fcgx;
+   Memory_Arena arena;
 
 #define X(v) char *(v);
    CGI_METAVARIABLES_LIST
 #undef X
+
+   Key_Value_Table url;
+   Key_Value_Table form;
 } Request_State;
 
 #define BSP_H
