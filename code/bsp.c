@@ -168,7 +168,7 @@ static void
 initialize_request(Request_State *request)
 {
    // Update request data with CGI metavariables from host environment.
-#define X(v) request->v = FCGX_GetParam(#v, request->fcgx.envp);
+#define X(v) request->v = GET_ENVIRONMENT_PARAMETER(#v);
    CGI_METAVARIABLES_LIST
 #undef X
 
@@ -188,7 +188,7 @@ initialize_request(Request_State *request)
       char *post_data = allocate(sizeof(char) * (content_length + 1));
       char *free_data = post_data;
       {
-         FCGX_GetStr(post_data, content_length + 1, request->fcgx.in);
+         GET_STRING_FROM_INPUT_STREAM(post_data, content_length + 1);
 
          Key_Value_Pair parameter = consume_key_value_pair(&request->arena, &post_data);
          while(*parameter.key)

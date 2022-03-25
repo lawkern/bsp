@@ -16,9 +16,6 @@
 
 #define ARRAY_LENGTH(a) (sizeof(a) / sizeof((a)[0]))
 
-#define OUT(...) FCGX_FPrintF(request->fcgx.out, __VA_ARGS__)
-#define ERR(...) FCGX_FPrintF(request->fcgx.err, __VA_ARGS__)
-
 #define PLATFORM_ALLOCATE(name) void *name(size_t size)
 static PLATFORM_ALLOCATE(allocate);
 
@@ -56,9 +53,9 @@ static PLATFORM_DEALLOCATE(deallocate);
 
 typedef struct
 {
+   unsigned char *base_address;
    size_t size;
    size_t used;
-   unsigned char *base_address;
 } Memory_Arena;
 
 typedef struct
@@ -70,7 +67,7 @@ typedef struct
 typedef struct
 {
    unsigned int count;
-   Key_Value_Pair entries[256];
+   Key_Value_Pair entries[1024];
 } Key_Value_Table;
 
 typedef struct
@@ -78,7 +75,6 @@ typedef struct
    // NOTE(law): The contents of Request_State is intended to persist for the
    // lifetime of a single request made by a single user.
 
-   FCGX_Request fcgx;
    Memory_Arena arena;
 
 #define X(v) char *(v);

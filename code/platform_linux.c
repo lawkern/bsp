@@ -2,7 +2,7 @@
 /* (c) copyright 2022 Lawrence D. Kern /////////////////////////////////////// */
 /* /////////////////////////////////////////////////////////////////////////// */
 
-#include <fcgiapp.h>
+#include "platform_linux.h"
 #include "bsp.c"
 
 static
@@ -32,7 +32,7 @@ main(int argument_count, char **arguments)
    FCGX_Init();
 
    Memory_Arena arena;
-   size_t size = MEGABYTES(64);
+   size_t size = MEGABYTES(512);
    unsigned char *base_address = allocate(size);
 
    FCGX_InitRequest(&fcgx, 0, 0);
@@ -40,8 +40,12 @@ main(int argument_count, char **arguments)
    {
       initialize_arena(&arena, base_address, size);
 
-      Request_State request_ = {fcgx, arena};
-      Request_State *request = &request_;
+      Linux_Request_State linux_request_ = {0};
+      Linux_Request_State *linux_request = &linux_request_;
+      linux_request->fcgx = fcgx;
+
+      Request_State *request = (Request_State *)linux_request;
+      request->arena = arena;
 
       initialize_request(request);
       process_request(request);
