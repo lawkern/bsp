@@ -69,23 +69,32 @@ PLATFORM_READ_FILE(read_file)
    return result;
 }
 
-int
-main(int argument_count, char **arguments)
+static bool
+accept_request(FCGX_Request *fcgx)
 {
-   (void)argument_count;
-   (void)arguments;
+   static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
-   initialize_templates(&global_html_templates);
+   pthread_mutex_lock(&mutex);
+   int accept_result = FCGX_Accept_r(fcgx);
+   pthread_mutex_unlock(&mutex);
 
-   FCGX_Request fcgx;
-   FCGX_Init();
+   bool result = (accept_result >= 0);
+   return result;
+}
+
+static void *
+launch_request_thread(void *data)
+{
+   long thread_id = (long)data;
 
    Memory_Arena arena;
    size_t size = MEGABYTES(512);
    unsigned char *base_address = allocate(size);
 
+   FCGX_Request fcgx;
    FCGX_InitRequest(&fcgx, 0, 0);
-   while(FCGX_Accept_r(&fcgx) >= 0)
+
+   while(accept_request(&fcgx))
    {
       initialize_arena(&arena, base_address, size);
 
@@ -95,12 +104,37 @@ main(int argument_count, char **arguments)
 
       Request_State *request = (Request_State *)linux_request;
       request->arena = arena;
+      request->thread_id = thread_id;
 
       initialize_request(request);
       process_request(request);
 
       FCGX_Finish_r(&fcgx);
    }
+
+   deallocate(base_address);
+
+   return 0;
+}
+
+int
+main(int argument_count, char **arguments)
+{
+   (void)argument_count;
+   (void)arguments;
+
+   initialize_templates(&global_html_templates);
+
+   FCGX_Init();
+
+   pthread_t threads[REQUEST_THREAD_COUNT];
+   for(long index = 1; index < ARRAY_LENGTH(threads); ++index)
+   {
+      pthread_t *thread = threads + index;
+      pthread_create(thread, 0, launch_request_thread, (void *)index);
+   }
+
+   launch_request_thread(0);
 
    return 0;
 }

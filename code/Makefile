@@ -1,17 +1,18 @@
 DEVELOPMENT_BUILD = 1
+REQUEST_THREAD_COUNT = 4
 APPLICATION_PORT = 6969
 
 CC      = clang
-CFLAGS  = -DDEVELOPMENT_BUILD=$(DEVELOPMENT_BUILD) $(WARNING_FLAGS)
-LDFLAGS = -lfcgi
+CFLAGS  = $(WARNING_FLAGS) -DDEVELOPMENT_BUILD=$(DEVELOPMENT_BUILD) -DREQUEST_THREAD_COUNT=$(REQUEST_THREAD_COUNT)
+LDFLAGS = -lfcgi -lpthread
 
 WARNING_FLAGS = -Wall -Werror
 
 ifeq ($(DEVELOPMENT_BUILD), 1)
-  CFLAGS += -g -O0
+	CFLAGS += -g -O0
 	WARNING_FLAGS += -Wno-unused-function -Wno-unused-variable -Wno-missing-braces
 else
-  CFLAGS += -O2
+	CFLAGS += -O2
 endif
 
 ifeq ($(CC), clang)

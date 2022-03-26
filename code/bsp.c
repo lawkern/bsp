@@ -265,6 +265,11 @@ debug_output_request_data(Request_State *request)
 
    OUT("<section id=\"debug-information\">");
 
+   // Output thread data
+   OUT("<table>");
+   OUT("<tr><td>Thread ID</td><td>%ld</td></tr>", request->thread_id);
+   OUT("</table>");
+
    // Output url parameters
    OUT("<table>");
    OUT("<tr><th>URL Parameter</th><th>Value</th></tr>");

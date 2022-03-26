@@ -8,5 +8,5 @@ id=$(lsof -t -i:$1)
 
 if [[ $? == 0 ]]
 then
-    kill $id
+    kill -s KILL $id
 fi

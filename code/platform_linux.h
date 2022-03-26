@@ -7,6 +7,7 @@
 // isolated in this header file.
 
 #include <fcgiapp.h>
+#include <pthread.h>
 
 // NOTE(law): The header bsp.h is included here for the definition of
 // Request_State needed by Linux_Request_State. That means that the #include in

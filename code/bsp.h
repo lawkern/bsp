@@ -90,6 +90,7 @@ typedef struct
    // lifetime of a single request made by a single user.
 
    Memory_Arena arena;
+   long thread_id;
 
 #define X(v) char *(v);
    CGI_METAVARIABLES_LIST
