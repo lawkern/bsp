@@ -174,7 +174,11 @@ main(int argument_count, char **arguments)
    (void)argument_count;
    (void)arguments;
 
-   initialize_templates(&global_html_templates);
+   // NOTE(law): Set the working directory up front to enable consistent access
+   // to data assets (html, css, logs, etc.).
+   chdir(STRINGIFY(WORKING_DIRECTORY));
+
+   initialize_application();
 
    FCGX_Init();
 

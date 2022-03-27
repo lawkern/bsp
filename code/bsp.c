@@ -3,46 +3,81 @@
 /* /////////////////////////////////////////////////////////////////////////// */
 
 #include "bsp.h"
+#include "bsp_memory.c"
 
-static Key_Value_Table global_html_templates;
+static Key_Value_Table    global_html_template_table;
+static User_Account_Table global_user_account_table;
 
 static void
-initialize_arena(Memory_Arena *arena, unsigned char *base_address, size_t size)
+import_users_from_database(User_Account_Table *table)
 {
-   arena->base_address = base_address;
-   arena->size = size;
-   arena->used = 0;
-}
+   // NOTE(law): User entries are stored in a flat file with the following
+   // format:
+   //
+   //   <salt><TAB><password_hash><TAB><username><NEWLINE>
+   //
+   // <salt> is four hexadecimal characters representing a 16-bit
+   // integer. <password_hash> is 64 hexadecimal characters representing a
+   // 256-bit integer. <username> is a string of up to 32 characters.
 
-#define PUSH_SIZE(arena, size)           push_size_((arena), (size))
-#define PUSH_STRUCT(arena, Type) (Type *)push_size_((arena), sizeof(Type))
+   // TODO(law): This structure is mainly for development purposes. I'd like to
+   // get away without needing a database indefinitely, but at the very least
+   // this could be stored more efficiently in binary.
 
-static void *
-push_size_(Memory_Arena *arena, size_t size)
-{
-   // TODO(law): Replace with a growing arena.
-   assert(size <= (arena->size - arena->used));
+   char *database_contents = read_file("users.dbsp");
 
-   void *result = arena->base_address + arena->used;
-   arena->used += size;
+   if(database_contents)
+   {
+      char *scan = database_contents;
+      while(*scan)
+      {
+         User_Account user = {0};
 
-   return result;
-}
+         // Consume salt
+         char *salt_start = scan;
+         while(*scan && *scan != '\t')
+         {
+            ++scan;
+         }
+         assert((scan - salt_start) == 4);
+         user.salt = strtol(salt_start, 0, 16);
 
-static size_t
-string_length(char *string)
-{
-   // TODO(law): Remove dependency on string.h.
-   size_t result = strlen(string);
-   return result;
-}
+         // Skip tab
+         ++scan;
 
-static bool
-strings_are_equal(char *a, char *b)
-{
-   // TODO(law): Remove dependency on string.h.
-   bool result = (strcmp(a, b) == 0);
-   return result;
+         // Consume password hash
+         char *hash_start = scan;
+         while(*scan && *scan != '\t')
+         {
+            ++scan;
+         }
+         assert((scan - hash_start) == 64);
+         memory_copy(user.password_hash, hash_start, 64);
+
+         // Skip tab
+         ++scan;
+
+         // Consume username
+         char *username_start = scan;
+         while(*scan && *scan != '\n')
+         {
+            ++scan;
+         }
+         assert((scan - username_start) <= (ARRAY_LENGTH(user.username) - 1));
+         memcpy(user.username, username_start, scan - username_start);
+
+         // Skip newline
+         ++scan;
+
+         table->users[table->count++] = user;
+      }
+
+      deallocate(database_contents);
+   }
+   else
+   {
+      log_message("[WARNING] Failed to open the user database.");
+   }
 }
 
 static unsigned long
@@ -211,37 +246,37 @@ initialize_request(Request_State *request)
    }
 }
 
-// TODO(law): The working directory of the running program should be set to the
-// data directory, rather than the build directory.
-#define HTML_TEMPLATE_BASE_PATH "../data/html/"
-#define OUTPUT_HTML_TEMPLATE(path) \
-   output_html_template(request, HTML_TEMPLATE_BASE_PATH path)
-
 static void
-initialize_templates(Key_Value_Table *table)
+initialize_application()
 {
-   // NOTE(law): This is called once at program startup to read listed html
-   // tempates into memory. It assumes resources are released automatically when
-   // the program exits (i.e. this will leak if called more than once).
+   // NOTE(law): This function is called once at program startup. It assumes
+   // resources are released automatically when the program exits (i.e. this
+   // will leak if called more than once).
 
-   // TODO(law): New templates need to be manually added to the list here
-   // (rather than just scanning the html directory).
+   // NOTE(law): Read user accounts into memory.
+   import_users_from_database(&global_user_account_table);
 
+   // NOTE(law): Read html tempates into memory.
    char *template_paths[] =
    {
-     HTML_TEMPLATE_BASE_PATH "header.html",
-     HTML_TEMPLATE_BASE_PATH "index.html",
-     HTML_TEMPLATE_BASE_PATH "login.html",
-     HTML_TEMPLATE_BASE_PATH "404.html",
+      // TODO(law): New templates need to be manually added to the list here (it
+      // doesn't just scan the html directory).
+
+     "html/header.html",
+     "html/index.html",
+     "html/login.html",
+     "html/404.html",
    };
 
    for(unsigned int index = 0; index < ARRAY_LENGTH(template_paths); ++index)
    {
       char *path = template_paths[index];
       char *template = read_file(path);
-      insert_key_value(table, path, template);
+      insert_key_value(&global_html_template_table, path, template);
    }
 }
+
+#define OUTPUT_HTML_TEMPLATE(name) output_html_template(request, "html/" name)
 
 static void
 output_html_template(Request_State *request, char *path)
@@ -251,13 +286,14 @@ output_html_template(Request_State *request, char *path)
    // be escaped to work normally (assuming that no addtional arguments are
    // passed to OUT()).
 
-   char *html = get_value(&global_html_templates, path);
+   char *html = get_value(&global_html_template_table, path);
    if(html)
    {
       OUT(html);
    }
    else
    {
+      log_message("[WARNING] HTML template \"%s\" could not be found.", path);
 #if DEVELOPMENT_BUILD
       OUT("<p>MISSING TEMPLATE: %s</p>", path);
 #endif
@@ -306,6 +342,16 @@ debug_output_request_data(Request_State *request)
    }
    OUT("</table>");
 
+   // Output user accounts
+   OUT("<table>");
+   OUT("<tr><th>Username</th><th>Salt</th><th>Password Hash</th></tr>");
+   for(unsigned int index = 0; index < global_user_account_table.count; ++index)
+   {
+      User_Account *user = global_user_account_table.users + index;
+      OUT("<tr><td>%s</td><td>%x</td><td>%s</td></tr>", user->username, user->salt, user->password_hash);
+   }
+   OUT("</table>");
+
    // Output CGI metavariables
    OUT("<table>");
    OUT("<tr><th>CGI Metavariable</th><th>Value</th></tr>");
@@ -313,6 +359,7 @@ debug_output_request_data(Request_State *request)
    CGI_METAVARIABLES_LIST
 #undef X
    OUT("</table>");
+
    OUT("</section>");
 #endif
 }
@@ -342,11 +389,13 @@ process_request(Request_State *request)
                request->SCRIPT_NAME,
                request->thread_id);
 
+
    if(strings_are_equal(request->SCRIPT_NAME, "/"))
    {
       output_request_header(request, 200);
       OUTPUT_HTML_TEMPLATE("header.html");
       OUTPUT_HTML_TEMPLATE("index.html");
+
    }
    else if(strings_are_equal(request->SCRIPT_NAME, "/login"))
    {

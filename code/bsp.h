@@ -8,7 +8,9 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+
+#define STRINGIFY_(x) #x
+#define STRINGIFY(x) STRINGIFY_(x)
 
 #define KILOBYTES(v) (1000LL * (v))
 #define MEGABYTES(v) (1000LL * KILOBYTES(v))
@@ -77,6 +79,19 @@ typedef struct
    unsigned int count;
    Key_Value_Pair entries[1024];
 } Key_Value_Table;
+
+typedef struct
+{
+   char username[33]; // includes null terminator
+   char password_hash[65]; // includes null terminator
+   unsigned short salt;
+} User_Account;
+
+typedef struct
+{
+   unsigned int count;
+   User_Account users[1024];
+} User_Account_Table;
 
 typedef struct
 {
