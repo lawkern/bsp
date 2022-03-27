@@ -29,6 +29,14 @@ push_size_(Memory_Arena *arena, size_t size)
    return result;
 }
 
+static size_t
+string_length(char *string)
+{
+   // TODO(law): Remove dependency on string.h.
+   size_t result = strlen(string);
+   return result;
+}
+
 static bool
 strings_are_equal(char *a, char *b)
 {
@@ -204,7 +212,7 @@ initialize_request(Request_State *request)
 }
 
 // TODO(law): The working directory of the running program should be set to the
-// data directory, rather than the build directory..
+// data directory, rather than the build directory.
 #define HTML_TEMPLATE_BASE_PATH "../data/html/"
 #define OUTPUT_HTML_TEMPLATE(path) \
    output_html_template(request, HTML_TEMPLATE_BASE_PATH path)
@@ -230,8 +238,8 @@ initialize_templates(Key_Value_Table *table)
    for(unsigned int index = 0; index < ARRAY_LENGTH(template_paths); ++index)
    {
       char *path = template_paths[index];
-      Platform_File template_file = read_file(path);
-      insert_key_value(table, path, (char *)template_file.memory);
+      char *template = read_file(path);
+      insert_key_value(table, path, template);
    }
 }
 
@@ -329,6 +337,11 @@ redirect_request(Request_State *request, char *path)
 static void
 process_request(Request_State *request)
 {
+   log_message("%s request to \"%s\" received by thread %ld.",
+               request->REQUEST_METHOD,
+               request->SCRIPT_NAME,
+               request->thread_id);
+
    if(strings_are_equal(request->SCRIPT_NAME, "/"))
    {
       output_request_header(request, 200);

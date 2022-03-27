@@ -6,64 +6,112 @@
 #include "bsp.c"
 
 static
+PLATFORM_LOG_MESSAGE(log_message)
+{
+   char *log_path = "../data/bsp.log";
+
+   time_t raw_time = time(0);
+   struct tm time;
+   localtime_r(&raw_time, &time);
+
+   char timestamp[32];
+   strftime(timestamp, ARRAY_LENGTH(timestamp), "%FT%T%z\t", &time);
+
+   char message[1024];
+   va_list arguments;
+   va_start(arguments, format);
+   {
+      vsnprintf(message, ARRAY_LENGTH(message), format, arguments);
+   }
+   va_end(arguments);
+
+   char log[ARRAY_LENGTH(timestamp) + ARRAY_LENGTH(message) + 1];
+   snprintf(log, ARRAY_LENGTH(log), "%s%s\n", timestamp, message);
+
+   int file = open(log_path, O_CREAT|O_WRONLY|O_APPEND, 0666);
+   if(file >= 0)
+   {
+      write(file, log, string_length(log));
+      close(file);
+   }
+}
+
+static
 PLATFORM_ALLOCATE(allocate)
 {
-   // TODO(law): replace with mmap().
-   void *result = calloc(1, size);
+   // NOTE(law): munmap() requires the size of the allocation in order to free
+   // the virtual memory. This function smuggles the allocation size just before
+   // the address that it actually returns.
+
+   size_t allocation_size = size + sizeof(size_t);
+   void *allocation = mmap(0, allocation_size, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_PRIVATE, -1, 0);
+
+   if(allocation == MAP_FAILED)
+   {
+      log_message("[ERROR] Failed to allocate virtual memory.");
+      return 0;
+   }
+
+   *(size_t *)allocation = allocation_size;
+
+   void *result = (void *)((unsigned char *)allocation + sizeof(size_t));
    return result;
 }
 
 static
 PLATFORM_DEALLOCATE(deallocate)
 {
-   if(memory)
+   // NOTE(law): munmap() requires the size of the allocation in order to free
+   // the virtual memory. We always just want to dump the entire thing, so
+   // allocate() hides the allocation size just before the address it returns.
+
+   void *allocation = (void *)((unsigned char *)memory - sizeof(size_t));
+   size_t allocation_size = *(size_t *)allocation;
+
+   if(munmap(allocation, allocation_size) != 0)
    {
-      free(memory);
+      log_message("[ERROR] Failed to deallocate virtual memory.");
    }
 }
 
 static
 PLATFORM_READ_FILE(read_file)
 {
-   // TODO(law): Implement this with os primitives.
+   // TODO(law): Better file I/O once file access is needed anywhere besides
+   // program startup.
 
-   Platform_File result = {0};
+   char *result = 0;
 
-   FILE *file = fopen(file_name, "rb");
-   if (file)
+   int file = open(file_name, O_RDONLY);
+   if (file >= 0)
    {
-      fseek(file, 0, SEEK_END);
-      long size = ftell(file);
-      fseek(file, 0, SEEK_SET);
-
-      if(size >= 0 && size <= UINT32_MAX)
+      struct stat file_information;
+      if(stat(file_name, &file_information) == 0)
       {
-         result.size = size;
+         size_t size = file_information.st_size;
 
-         // NOTE(law): This explicitly null terminates the file contents so it
-         // can be used as a string.
-         result.memory = allocate(result.size + 1);
-         if(result.memory)
+         // NOTE(law): Null terminate memory so it can be used as a string.
+         result = allocate(size + 1);
+         if(result)
          {
-            result.memory[result.size] = 0;
-            fread(result.memory, 1, result.size, file);
+            read(file, result, size);
+            result[size] = 0;
          }
          else
          {
-            // TODO(law): Log error.
-            result.size = 0;
+            log_message("[ERROR] Failed to allocate memory for file: %s.", file_name);
          }
       }
       else
       {
-         // TODO(law): Log error.
+         log_message("[ERROR] Failed to read file size of file: %s.", file_name);
       }
 
-      fclose(file);
+      close(file);
    }
    else
    {
-      // TODO(law): Log error.
+      log_message("[ERROR] Failed to open file: %s.", file_name);
    }
 
    return result;
@@ -86,6 +134,7 @@ static void *
 launch_request_thread(void *data)
 {
    long thread_id = (long)data;
+   log_message("Request thread %ld launched.", thread_id);
 
    Memory_Arena arena;
    size_t size = MEGABYTES(512);
@@ -113,6 +162,8 @@ launch_request_thread(void *data)
    }
 
    deallocate(base_address);
+
+   log_message("Request thread %ld terminated.", thread_id);
 
    return 0;
 }

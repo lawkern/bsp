@@ -24,16 +24,10 @@ static PLATFORM_ALLOCATE(allocate);
 #define PLATFORM_DEALLOCATE(name) void name(void *memory)
 static PLATFORM_DEALLOCATE(deallocate);
 
-typedef struct
-{
-   // NOTE(law): The file size uses 32 bits because of ReadFile() limitations on
-   // win32.
+#define PLATFORM_LOG_MESSAGE(name) void name(char *format, ...)
+static PLATFORM_LOG_MESSAGE(log_message);
 
-   unsigned int size;
-   unsigned char *memory;
-} Platform_File;
-
-#define PLATFORM_READ_FILE(name) Platform_File name(char *file_name)
+#define PLATFORM_READ_FILE(name) char *name(char *file_name)
 static PLATFORM_READ_FILE(read_file);
 
 #define CGI_METAVARIABLES_LIST                  \
