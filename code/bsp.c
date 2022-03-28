@@ -4,6 +4,7 @@
 
 #include "bsp.h"
 #include "bsp_memory.c"
+#include "bsp_sha256.c"
 
 static Key_Value_Table    global_html_template_table;
 static User_Account_Table global_user_account_table;
@@ -52,7 +53,7 @@ import_users_from_database(User_Account_Table *table)
             ++scan;
          }
          assert((scan - hash_start) == 64);
-         memory_copy(user.password_hash, hash_start, 64);
+         memory_copy(user.password_hash.bytes, hash_start, 64);
 
          // Skip tab
          ++scan;
@@ -81,7 +82,7 @@ import_users_from_database(User_Account_Table *table)
 }
 
 static unsigned long
-hash_string(char *string)
+hash_key_string(char *string)
 {
    // This is the djb2 hash function referenced at
    // http://www.cse.yorku.ca/~oz/hash.html
@@ -159,7 +160,7 @@ insert_key_value(Key_Value_Table *table, char *key, char *value)
    assert(table->count < max_hash_count);
    table->count++;
 
-   unsigned long hash_value = hash_string(key);
+   unsigned long hash_value = hash_key_string(key);
    unsigned int hash_index = hash_value % max_hash_count;
 
    Key_Value_Pair *entry = table->entries + hash_index;
@@ -183,7 +184,7 @@ get_value(Key_Value_Table *table, char *key)
 {
    char *result = 0;
 
-   unsigned long hash_value = hash_string(key);
+   unsigned long hash_value = hash_key_string(key);
    unsigned int hash_index = hash_value % ARRAY_LENGTH(table->entries);
 
    Key_Value_Pair *entry = table->entries + hash_index;
@@ -253,6 +254,11 @@ initialize_application()
    // resources are released automatically when the program exits (i.e. this
    // will leak if called more than once).
 
+#if DEVELOPMENT_BUILD
+   // NOTE(law): Perform any automated testing.
+   test_hash_sha256(20000);
+#endif
+
    // NOTE(law): Read user accounts into memory.
    import_users_from_database(&global_user_account_table);
 
@@ -270,6 +276,10 @@ initialize_application()
 
    for(unsigned int index = 0; index < ARRAY_LENGTH(template_paths); ++index)
    {
+      // TODO(law): Performing a lot of individually small allocations with
+      // read_file() is pretty wasteful. Allocate a big chunk of memory up front
+      // just for template data.
+
       char *path = template_paths[index];
       char *template = read_file(path);
       insert_key_value(&global_html_template_table, path, template);
@@ -348,7 +358,7 @@ debug_output_request_data(Request_State *request)
    for(unsigned int index = 0; index < global_user_account_table.count; ++index)
    {
       User_Account *user = global_user_account_table.users + index;
-      OUT("<tr><td>%s</td><td>%x</td><td>%s</td></tr>", user->username, user->salt, user->password_hash);
+      OUT("<tr><td>%s</td><td>%x</td><td>%s</td></tr>", user->username, user->salt, user->password_hash.bytes);
    }
    OUT("</table>");
 
@@ -389,13 +399,11 @@ process_request(Request_State *request)
                request->SCRIPT_NAME,
                request->thread_id);
 
-
    if(strings_are_equal(request->SCRIPT_NAME, "/"))
    {
       output_request_header(request, 200);
       OUTPUT_HTML_TEMPLATE("header.html");
       OUTPUT_HTML_TEMPLATE("index.html");
-
    }
    else if(strings_are_equal(request->SCRIPT_NAME, "/login"))
    {

@@ -20,6 +20,40 @@ strings_are_equal(char *a, char *b)
    return result;
 }
 
+static size_t
+format_string_list(char *destination, size_t size, char *format, va_list arguments)
+{
+   // TODO(law): Remove dependency on stdio.h.
+
+   // TODO(law); vsnprintf() actually returns an int, not a size_t. This can
+   // conceivably generate incorrect values on large enough strings. Handle this
+   // properly when implementing from scratch.
+   size_t result = vsnprintf(destination, size, format, arguments);
+   return result;
+}
+
+static size_t
+format_string(char *destination, size_t size, char *format, ...)
+{
+   size_t result = 0;
+
+   va_list arguments;
+   va_start(arguments, format);
+   {
+      result = format_string_list(destination, size, format, arguments);
+   }
+   va_end(arguments);
+
+   return result;
+}
+
+static void
+zero_memory(void *destination, size_t size)
+{
+   // TODO(law): Remove dependency on string.h.
+   memset(destination, 0, size);
+}
+
 static void
 memory_copy(void *destination, void *source, size_t size)
 {

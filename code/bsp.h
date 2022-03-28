@@ -9,6 +9,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "bsp_sha256.h"
+
 #define STRINGIFY_(x) #x
 #define STRINGIFY(x) STRINGIFY_(x)
 
@@ -83,7 +85,7 @@ typedef struct
 typedef struct
 {
    char username[33]; // includes null terminator
-   char password_hash[65]; // includes null terminator
+   SHA256_Hash password_hash;
    unsigned short salt;
 } User_Account;
 

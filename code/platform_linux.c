@@ -21,12 +21,12 @@ PLATFORM_LOG_MESSAGE(log_message)
    va_list arguments;
    va_start(arguments, format);
    {
-      vsnprintf(message, ARRAY_LENGTH(message), format, arguments);
+      format_string_list(message, ARRAY_LENGTH(message), format, arguments);
    }
    va_end(arguments);
 
    char log[ARRAY_LENGTH(timestamp) + ARRAY_LENGTH(message) + 1];
-   snprintf(log, ARRAY_LENGTH(log), "%s%s\n", timestamp, message);
+   format_string(log, ARRAY_LENGTH(log), "%s%s\n", timestamp, message);
 
    int file = open(log_path, O_CREAT|O_WRONLY|O_APPEND, 0666);
    if(file >= 0)
