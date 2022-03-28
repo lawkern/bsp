@@ -16,9 +16,11 @@
 
 #define KILOBYTES(v) (1000LL * (v))
 #define MEGABYTES(v) (1000LL * KILOBYTES(v))
+#define GIGABYTES(v) (1000LL * MEGABYTES(v))
 
 #define KIBIBYTES(v) (1024LL * (v))
 #define MEBIBYTES(v) (1024LL * KIBIBYTES(v))
+#define GIBIBYTES(v) (1024LL * MEBIBYTES(v))
 
 #define ARRAY_LENGTH(a) (sizeof(a) / sizeof((a)[0]))
 

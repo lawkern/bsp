@@ -137,7 +137,7 @@ launch_request_thread(void *data)
    log_message("Request thread %ld launched.", thread_id);
 
    Memory_Arena arena;
-   size_t size = MEGABYTES(512);
+   size_t size = MEBIBYTES(512);
    unsigned char *base_address = allocate(size);
 
    FCGX_Request fcgx;

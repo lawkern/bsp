@@ -428,11 +428,6 @@ debug_output_request_data(Request_State *request)
 
    OUT("<section id=\"debug-information\">");
 
-   // Output thread data
-   OUT("<table>");
-   OUT("<tr><td>Thread ID</td><td>%ld</td></tr>", request->thread_id);
-   OUT("</table>");
-
    // Output url parameters
    OUT("<table>");
    OUT("<tr><th>URL Parameter</th><th>Value</th></tr>");
@@ -459,6 +454,40 @@ debug_output_request_data(Request_State *request)
          OUT("<tr><td>%s</td><td>%s</td></tr>", parameter->key, value);
       }
    }
+   OUT("</table>");
+
+   // Output arena data
+   float arena_size = (float)request->arena.size;
+   char *units_size = "B";
+   if(arena_size >= MEBIBYTES(1))
+   {
+      arena_size /= MEBIBYTES(1);
+      units_size = "MiB";
+   }
+   else if(arena_size >= KIBIBYTES(1))
+   {
+      arena_size /= KIBIBYTES(1);
+      units_size = "KiB";
+   }
+
+   float arena_used = (float)request->arena.used;
+   char *units_used = "B";
+   if(arena_used >= MEBIBYTES(1))
+   {
+      arena_used /= MEBIBYTES(1);
+      units_used = "MiB";
+   }
+   else if(arena_used >= KIBIBYTES(1))
+   {
+      arena_used /= KIBIBYTES(1);
+      units_used = "KiB";
+   }
+
+   OUT("<table>");
+   OUT("<tr><th colspan=\"2\">Memory Arena</th></tr>", request->thread_id);
+   OUT("<tr><td>Thread ID</td><td>%ld</td></tr>", request->thread_id);
+   OUT("<tr><td>Arena Size</td><td>%0.1f%s</td></tr>", arena_size, units_size);
+   OUT("<tr><td>Arena Used</td><td>%0.1f%s</td></tr>", arena_used, units_used);
    OUT("</table>");
 
    // Output user accounts
