@@ -75,11 +75,18 @@ initialize_arena(Memory_Arena *arena, unsigned char *base_address, size_t size)
 static void *
 push_size_(Memory_Arena *arena, size_t size)
 {
-   // TODO(law): Replace with a growing arena.
-   assert(size <= (arena->size - arena->used));
+   void *result = 0;
 
-   void *result = arena->base_address + arena->used;
-   arena->used += size;
+   if(size <= (arena->size - arena->used))
+   {
+      result = arena->base_address + arena->used;
+      arena->used += size;
+   }
+   else
+   {
+      // TODO(law): Replace with a growing arena.
+      log_message("[WARNING] Arena is full, failed to allocate memory.");
+   }
 
    return result;
 }

@@ -81,6 +81,69 @@ import_users_from_database(User_Account_Table *table)
    }
 }
 
+static bool
+is_hexadecimal_digit(char character)
+{
+   bool result = (character == '0' || character == '1' ||
+                  character == '2' || character == '3' ||
+                  character == '4' || character == '5' ||
+                  character == '6' || character == '7' ||
+                  character == '8' || character == '9' ||
+                  character == 'A' || character == 'a' ||
+                  character == 'B' || character == 'b' ||
+                  character == 'C' || character == 'c' ||
+                  character == 'D' || character == 'd' ||
+                  character == 'E' || character == 'e' ||
+                  character == 'F' || character == 'f');
+
+   return result;
+}
+
+static void
+decode_query_string(char *destination, char *source, size_t size)
+{
+   while(*source && size-- > 1)
+   {
+      if(source[0] == '%' &&
+         source[1] &&
+         source[2] &&
+         is_hexadecimal_digit(source[1]) &&
+         is_hexadecimal_digit(source[2]))
+      {
+         char x1 = source[1];
+         char x2 = source[2];
+
+         // NOTE(law): If in the range of lowercase hexadecimal characters,
+         // shift into the range of uppercase characters.
+         if(x1 >= 'a') {x1 -= ('a' - 'A');}
+         if(x2 >= 'a') {x2 -= ('a' - 'A');}
+
+         // NOTE(law): If the character is a letter (A-F), then shift down to
+         // its equivalent decimal value (10-15). Otherwise shift down to the
+         // single decimal digit range.
+         x1 -= (x1 >= 'A') ? ('A' - 10) : '0';
+         x2 -= (x2 >= 'A') ? ('A' - 10) : '0';
+
+         // NOTE(law): Assemble hex digits into a single base-16 value.
+         *destination++ = (16 * x1) + x2;
+         source += 3;
+      }
+      else if(source[0] == '+')
+      {
+         // NOTE(law): Convert '+' back to a space character.
+         *destination++ = ' ';
+         source++;
+      }
+      else
+      {
+         *destination++ = *source++;
+      }
+   }
+
+   // Null terminate the string.
+   *destination = 0;
+}
+
 static unsigned long
 hash_key_string(char *string)
 {
@@ -119,6 +182,11 @@ consume_key_value_pair(Memory_Arena *arena, char **key_value_string)
 
       size_t key_size = scan - start;
       result.key = PUSH_SIZE(arena, key_size + 1);
+      if(!result.key)
+      {
+         return result;
+      }
+
       memcpy(result.key, start, key_size);
       result.key[key_size] = 0;
 
@@ -136,6 +204,12 @@ consume_key_value_pair(Memory_Arena *arena, char **key_value_string)
 
          size_t value_size = scan - start;
          result.value = PUSH_SIZE(arena, value_size + 1);
+         if(!result.value)
+         {
+            result.key = 0;
+            return result;
+         }
+
          memcpy(result.value, start, value_size);
          result.value[value_size] = 0;
       }
@@ -157,26 +231,32 @@ insert_key_value(Key_Value_Table *table, char *key, char *value)
 {
    // TODO(law): Resizable table?
    unsigned int max_hash_count = ARRAY_LENGTH(table->entries);
-   assert(table->count < max_hash_count);
-   table->count++;
-
-   unsigned long hash_value = hash_key_string(key);
-   unsigned int hash_index = hash_value % max_hash_count;
-
-   Key_Value_Pair *entry = table->entries + hash_index;
-   while(entry->key)
+   if(table->count < max_hash_count)
    {
-      hash_index++;
-      if(hash_index >= max_hash_count)
+      table->count++;
+
+      unsigned long hash_value = hash_key_string(key);
+      unsigned int hash_index = hash_value % max_hash_count;
+
+      Key_Value_Pair *entry = table->entries + hash_index;
+      while(entry->key)
       {
-         hash_index = 0;
+         hash_index++;
+         if(hash_index >= max_hash_count)
+         {
+            hash_index = 0;
+         }
+
+         entry = table->entries + hash_index;
       }
 
-      entry = table->entries + hash_index;
+      entry->key = key;
+      entry->value = value;
    }
-
-   entry->key = key;
-   entry->value = value;
+   else
+   {
+      log_message("[WARNING] Failed to insert key/value - table was full.");
+   }
 }
 
 static char *
@@ -218,32 +298,61 @@ initialize_request(Request_State *request)
    CGI_METAVARIABLES_LIST
 #undef X
 
+   Memory_Arena *arena = &request->arena;
+
    // Update request data with URL parameters from query string.
    char *query_string = request->QUERY_STRING;
-   Key_Value_Pair parameter = consume_key_value_pair(&request->arena, &query_string);
+   Key_Value_Pair parameter = consume_key_value_pair(arena, &query_string);
    while(*parameter.key)
    {
-      insert_key_value(&request->url, parameter.key, parameter.value);
-      parameter = consume_key_value_pair(&request->arena, &query_string);
+      size_t key_size   = string_length(parameter.key) + 1;
+      size_t value_size = string_length(parameter.value) + 1;
+
+      char *decoded_key   = PUSH_SIZE(arena, key_size);
+      char *decoded_value = PUSH_SIZE(arena, value_size);
+
+      if(!decoded_key || !decoded_value)
+      {
+         break;
+      }
+
+      decode_query_string(decoded_key, parameter.key, key_size);
+      decode_query_string(decoded_value, parameter.value, value_size);
+
+      insert_key_value(&request->url, decoded_key, decoded_value);
+      parameter = consume_key_value_pair(arena, &query_string);
    }
 
    // Update request data with form parameters from POST request.
    if(strings_are_equal(request->REQUEST_METHOD, "POST") && request->CONTENT_LENGTH)
    {
       size_t content_length = strtol(request->CONTENT_LENGTH, 0, 10);
-      char *post_data = allocate(sizeof(char) * (content_length + 1));
-      char *free_data = post_data;
+      char *post_data = PUSH_SIZE(arena, content_length + 1);
+      if(post_data)
       {
          GET_STRING_FROM_INPUT_STREAM(post_data, content_length + 1);
 
-         Key_Value_Pair parameter = consume_key_value_pair(&request->arena, &post_data);
+         Key_Value_Pair parameter = consume_key_value_pair(arena, &post_data);
          while(*parameter.key)
          {
-            insert_key_value(&request->form, parameter.key, parameter.value);
-            parameter = consume_key_value_pair(&request->arena, &post_data);
+            size_t key_size   = string_length(parameter.key) + 1;
+            size_t value_size = string_length(parameter.value) + 1;
+
+            char *decoded_key   = PUSH_SIZE(arena, key_size);
+            char *decoded_value = PUSH_SIZE(arena, value_size);
+
+            if(!decoded_key || !decoded_value)
+            {
+               break;
+            }
+
+            decode_query_string(decoded_key, parameter.key, key_size);
+            decode_query_string(decoded_value, parameter.value, value_size);
+
+            insert_key_value(&request->form, decoded_key, decoded_value);
+            parameter = consume_key_value_pair(arena, &post_data);
          }
       }
-      deallocate(free_data);
    }
 }
 
