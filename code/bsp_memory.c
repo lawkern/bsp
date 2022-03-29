@@ -62,6 +62,34 @@ memory_copy(void *destination, void *source, size_t size)
 }
 
 static void
+memory_set(void *destination, size_t size, unsigned char value)
+{
+   // TODO(law): Remove dependency on string.h.
+   memset(destination, value, size);
+}
+
+static bool
+bytes_are_equal(void *a, void *b, size_t size)
+{
+   // TODO(law): Remove dependency on string.h.
+   bool result = true;
+
+   unsigned char *a_bytes = (unsigned char *)a;
+   unsigned char *b_bytes = (unsigned char *)b;
+
+   for(size_t index = 0; index < size; ++index)
+   {
+      if(a_bytes[index] != b_bytes[index])
+      {
+         result = false;
+         break;
+      }
+   }
+
+   return result;
+}
+
+static void
 initialize_arena(Memory_Arena *arena, unsigned char *base_address, size_t size)
 {
    arena->base_address = base_address;

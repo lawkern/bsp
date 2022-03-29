@@ -366,6 +366,7 @@ initialize_application()
 #if DEVELOPMENT_BUILD
    // NOTE(law): Perform any automated testing.
    test_hash_sha256(20000);
+   test_hmac_sha256(20000);
 #endif
 
    // NOTE(law): Read user accounts into memory.

@@ -5,8 +5,9 @@
 
 typedef struct
 {
-   char bytes[65]; // Includes null terminator.
-} SHA256_Hash;
+   unsigned char bytes[32];
+   char text[65]; // Includes null terminator.
+} SHA256;
 
 typedef struct
 {

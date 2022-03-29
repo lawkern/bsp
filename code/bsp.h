@@ -91,7 +91,7 @@ typedef struct
 {
    char username[33]; // includes null terminator
    char salt[33]; // includes null terminator
-   SHA256_Hash password_hash;
+   SHA256 password_hash;
 } User_Account;
 
 typedef struct
