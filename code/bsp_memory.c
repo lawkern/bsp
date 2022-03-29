@@ -2,6 +2,7 @@
 /* (c) copyright 2022 Lawrence D. Kern /////////////////////////////////////// */
 /* /////////////////////////////////////////////////////////////////////////// */
 
+#include <stdlib.h>
 #include <string.h>
 
 static size_t
@@ -17,6 +18,14 @@ strings_are_equal(char *a, char *b)
 {
    // TODO(law): Remove dependency on string.h.
    bool result = (strcmp(a, b) == 0);
+   return result;
+}
+
+static long
+string_to_integer_decimal(char *string)
+{
+   // TODO(law): Remove dependency on stdlib.h.
+   long result = strtol(string, 0, 10);
    return result;
 }
 

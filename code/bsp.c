@@ -326,7 +326,7 @@ initialize_request(Request_State *request)
    // Update request data with form parameters from POST request.
    if(strings_are_equal(request->REQUEST_METHOD, "POST") && request->CONTENT_LENGTH)
    {
-      size_t content_length = strtol(request->CONTENT_LENGTH, 0, 10);
+      size_t content_length = string_to_integer_decimal(request->CONTENT_LENGTH);
       char *post_data = PUSH_SIZE(arena, content_length + 1);
       if(post_data)
       {
