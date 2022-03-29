@@ -117,6 +117,22 @@ PLATFORM_READ_FILE(read_file)
    return result;
 }
 
+static
+PLATFORM_GET_RANDOM_BYTES(get_random_bytes)
+{
+   zero_memory(destination, size);
+   size_t bytes_generated = getrandom(destination, size, 0);
+
+   if(bytes_generated < 0)
+   {
+      log_message("[ERROR] Failed to generate a random number.");
+   }
+   else if(bytes_generated < size)
+   {
+      log_message("[WARNING] Only generated %ld of requested %ld bytes.", bytes_generated, size);
+   }
+}
+
 static bool
 accept_request(FCGX_Request *fcgx)
 {

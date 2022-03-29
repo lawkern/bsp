@@ -17,7 +17,7 @@ import_users_from_database(User_Account_Table *table)
    //
    //   <salt><TAB><password_hash><TAB><username><NEWLINE>
    //
-   // <salt> is four hexadecimal characters representing a 16-bit
+   // <salt> is 32 hexadecimal characters representing a 128-bit
    // integer. <password_hash> is 64 hexadecimal characters representing a
    // 256-bit integer. <username> is a string of up to 32 characters.
 
@@ -40,8 +40,8 @@ import_users_from_database(User_Account_Table *table)
          {
             ++scan;
          }
-         assert((scan - salt_start) == 4);
-         user.salt = strtol(salt_start, 0, 16);
+         assert((scan - salt_start) == 32);
+         memory_copy(user.salt, salt_start, 32);
 
          // Skip tab
          ++scan;
@@ -496,7 +496,7 @@ debug_output_request_data(Request_State *request)
    for(unsigned int index = 0; index < global_user_account_table.count; ++index)
    {
       User_Account *user = global_user_account_table.users + index;
-      OUT("<tr><td>%s</td><td>%x</td><td>%s</td></tr>", user->username, user->salt, user->password_hash.bytes);
+      OUT("<tr><td>%s</td><td>%s</td><td>%s</td></tr>", user->username, user->salt, user->password_hash.bytes);
    }
    OUT("</table>");
 

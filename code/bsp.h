@@ -36,6 +36,9 @@ static PLATFORM_LOG_MESSAGE(log_message);
 #define PLATFORM_READ_FILE(name) char *name(char *file_name)
 static PLATFORM_READ_FILE(read_file);
 
+#define PLATFORM_GET_RANDOM_BYTES(name) void name(void *destination, size_t size)
+static PLATFORM_GET_RANDOM_BYTES(get_random_bytes);
+
 #define CGI_METAVARIABLES_LIST                  \
    X(AUTH_TYPE)                                 \
    X(CONTENT_LENGTH)                            \
@@ -87,8 +90,8 @@ typedef struct
 typedef struct
 {
    char username[33]; // includes null terminator
+   char salt[33]; // includes null terminator
    SHA256_Hash password_hash;
-   unsigned short salt;
 } User_Account;
 
 typedef struct
