@@ -40,8 +40,13 @@ import_users_from_database(User_Account_Table *table)
          {
             ++scan;
          }
-         assert((scan - salt_start) == 32);
-         memory_copy(user.salt, salt_start, 32);
+         size_t salt_start_length = 2 * sizeof(user.salt);
+         assert((scan - salt_start) == salt_start_length);
+
+         hexadecimal_string_to_bytes((unsigned char *)user.salt,
+                                     sizeof(user.salt),
+                                     salt_start,
+                                     salt_start_length);
 
          // Skip tab
          ++scan;
@@ -52,8 +57,13 @@ import_users_from_database(User_Account_Table *table)
          {
             ++scan;
          }
-         assert((scan - hash_start) == 64);
-         memory_copy(user.password_hash.bytes, hash_start, 64);
+         size_t hash_start_length = 2 * sizeof(user.password_hash);
+         assert((scan - hash_start) == hash_start_length);
+
+         hexadecimal_string_to_bytes((unsigned char *)user.password_hash,
+                                     sizeof(user.password_hash),
+                                     hash_start,
+                                     hash_start_length);
 
          // Skip tab
          ++scan;
@@ -79,6 +89,25 @@ import_users_from_database(User_Account_Table *table)
    {
       log_message("[WARNING] Failed to open the user database.");
    }
+}
+
+static User_Account
+get_user(char *username)
+{
+   // TODO(law): Restructure this to use a hash lookup on the user name.
+
+   User_Account result = {0};
+   for(unsigned int index = 0; index < global_user_account_table.count; ++index)
+   {
+      User_Account account = global_user_account_table.users[index];
+      if(strings_are_equal(account.username, username))
+      {
+         result = account;
+         break;
+      }
+   }
+
+   return result;
 }
 
 static bool
@@ -150,15 +179,15 @@ hash_key_string(char *string)
    // This is the djb2 hash function referenced at
    // http://www.cse.yorku.ca/~oz/hash.html
 
-    unsigned long result = 5381;
+   unsigned long result = 5381;
 
-    int c;
-    while((c = *string++))
-    {
-       result = ((result << 5) + result) + c; /* result * 33 + c */
-    }
+   int c;
+   while((c = *string++))
+   {
+      result = ((result << 5) + result) + c; /* result * 33 + c */
+   }
 
-    return result;
+   return result;
 }
 
 static Key_Value_Pair
@@ -365,9 +394,9 @@ initialize_application()
 
 #if DEVELOPMENT_BUILD
    // NOTE(law): Perform any automated testing.
-   test_hash_sha256(4096);
-   test_hmac_sha256(4096);
-   test_pbkdf2_hmac_sha256(32);
+   test_hash_sha256(2048);
+   test_hmac_sha256(2048);
+   test_pbkdf2_hmac_sha256(8);
 #endif
 
    // NOTE(law): Read user accounts into memory.
@@ -379,10 +408,9 @@ initialize_application()
       // TODO(law): New templates need to be manually added to the list here (it
       // doesn't just scan the html directory).
 
-     "html/header.html",
-     "html/index.html",
-     "html/login.html",
-     "html/404.html",
+      "html/header.html",
+      "html/index.html",
+      "html/404.html",
    };
 
    for(unsigned int index = 0; index < ARRAY_LENGTH(template_paths); ++index)
@@ -395,6 +423,69 @@ initialize_application()
       char *template = read_file(path);
       insert_key_value(&global_html_template_table, path, template);
    }
+}
+
+static char *
+encode_for_html(Memory_Arena *arena, char *input_string)
+{
+   size_t size = 1;
+   char *result = PUSH_SIZE(arena, size);
+
+   while(*input_string)
+   {
+      if(input_string[0] == '&')
+      {
+         PUSH_SIZE(arena, 5);
+
+         result[size++ - 1] = '&';
+         result[size++ - 1] = 'a';
+         result[size++ - 1] = 'm';
+         result[size++ - 1] = 'p';
+         result[size++ - 1] = ';';
+      }
+      else if(input_string[0] == '<')
+      {
+         PUSH_SIZE(arena, 4);
+
+         result[size++ - 1] = '&';
+         result[size++ - 1] = 'l';
+         result[size++ - 1] = 't';
+         result[size++ - 1] = ';';
+      }
+      else if(input_string[0] == '>')
+      {
+         PUSH_SIZE(arena, 4);
+
+         result[size++ - 1] = '&';
+         result[size++ - 1] = 'g';
+         result[size++ - 1] = 't';
+         result[size++ - 1] = ';';
+      }
+      else if(input_string[0] == '"')
+      {
+         PUSH_SIZE(arena, 6);
+
+         result[size++ - 1] = '&';
+         result[size++ - 1] = 'q';
+         result[size++ - 1] = 'u';
+         result[size++ - 1] = 'o';
+         result[size++ - 1] = 't';
+         result[size++ - 1] = ';';
+      }
+      else
+      {
+         PUSH_SIZE(arena, 1);
+
+         result[size++ - 1] = input_string[0];
+      }
+
+      input_string++;
+   }
+
+   // Null terminate
+   result[size - 1] = 0;
+
+   return result;
 }
 
 #define OUTPUT_HTML_TEMPLATE(name) output_html_template(request, "html/" name)
@@ -425,6 +516,7 @@ static void
 debug_output_request_data(Request_State *request)
 {
 #if DEVELOPMENT_BUILD
+   Memory_Arena *arena = &request->arena;
    Key_Value_Table *url = &request->url;
    Key_Value_Table *form = &request->form;
 
@@ -439,7 +531,10 @@ debug_output_request_data(Request_State *request)
       if(parameter->key && *parameter->key)
       {
          char *value = (parameter->value) ? parameter->value : "";
-         OUT("<tr><td>%s</td><td>%s</td></tr>", parameter->key, value);
+         OUT("<tr>");
+         OUT("<td>%s</td>", encode_for_html(arena, parameter->key));
+         OUT("<td>%s</td>", encode_for_html(arena, value));
+         OUT("</tr>");
       }
    }
    OUT("</table>");
@@ -453,13 +548,16 @@ debug_output_request_data(Request_State *request)
       if(parameter->key && *parameter->key)
       {
          char *value = (parameter->value) ? parameter->value : "";
-         OUT("<tr><td>%s</td><td>%s</td></tr>", parameter->key, value);
+         OUT("<tr>");
+         OUT("<td>%s</td>", encode_for_html(arena, parameter->key));
+         OUT("<td>%s</td>", encode_for_html(arena, value));
+         OUT("</tr>");
       }
    }
    OUT("</table>");
 
    // Output arena data
-   float arena_size = (float)request->arena.size;
+   float arena_size = (float)arena->size;
    char *units_size = "B";
    if(arena_size >= MEBIBYTES(1))
    {
@@ -472,7 +570,7 @@ debug_output_request_data(Request_State *request)
       units_size = "KiB";
    }
 
-   float arena_used = (float)request->arena.used;
+   float arena_used = (float)arena->used;
    char *units_used = "B";
    if(arena_used >= MEBIBYTES(1))
    {
@@ -498,16 +596,27 @@ debug_output_request_data(Request_State *request)
    for(unsigned int index = 0; index < global_user_account_table.count; ++index)
    {
       User_Account *user = global_user_account_table.users + index;
-      OUT("<tr><td>%s</td><td>%s</td><td>%s</td></tr>", user->username, user->salt, user->password_hash.bytes);
+      OUT("<tr>");
+      OUT("<td>%s</td>", encode_for_html(arena, user->username));
+      OUT("<td>");
+      print_bytes(request, user->salt, 16);
+      OUT("</td>");
+      OUT("<td>");
+      print_bytes(request, user->password_hash, 32);
+      OUT("</td>");
+      OUT("</tr>");
    }
    OUT("</table>");
 
    // Output CGI metavariables
    OUT("<table>");
    OUT("<tr><th>CGI Metavariable</th><th>Value</th></tr>");
-#define X(v) OUT("<tr><td>" #v "</td><td>%s</td></tr>", (request->v) ? request->v : "");
+
+#define X(v) OUT("<tr><td>" #v "</td><td>%s</td></tr>",                 \
+                 (request->v) ? encode_for_html(arena, request->v) : "");
    CGI_METAVARIABLES_LIST
 #undef X
+
    OUT("</table>");
 
    OUT("</section>");
@@ -531,6 +640,74 @@ redirect_request(Request_State *request, char *path)
    OUT("\n");
 }
 
+#define PBKDF2_PASSWORD_ITERATION_ACCOUNT 100000
+
+static User_Account
+login_user(char *username, char *password)
+{
+   // NOTE(law): The convention here is that *result.username == 0 means that
+   // the user doesn't exists, while *result.password_hash == 0 or *result.salt
+   // == 0 means that the supplied password was incorrect.
+
+   // NOTE(law): This and the account registration code are the only areas of
+   // the codebase that work with the user's password directly. It only ever
+   // exists in working memory - only the salt value and resulting hash are ever
+   // saved to disc.
+
+   User_Account result = {0};
+
+   User_Account user = get_user(username);
+   if(*user.username)
+   {
+      // NOTE(law): Save the name to indicate that the account existed.
+      memory_copy(result.username, username, sizeof(result.username));
+
+      unsigned char password_hash[sizeof(user.password_hash)];
+      unsigned char *password_bytes = (unsigned char *)password;
+      size_t password_size = string_length(password);
+
+      pbkdf2_hmac_sha256(password_hash,
+                         sizeof(password_hash),
+                         password_bytes,
+                         password_size,
+                         user.salt,
+                         sizeof(user.salt),
+                         PBKDF2_PASSWORD_ITERATION_ACCOUNT);
+
+      // NOTE(law): If the password hash matches that of the existing account,
+      // they can log in (so fill out the rest of the result struct).
+      if(bytes_are_equal(password_hash, user.password_hash, sizeof(user.password_hash)))
+      {
+         result = user;
+      }
+   }
+
+   return result;
+}
+
+static void
+register_user(char *username, char *password)
+{
+   User_Account user = {0};
+
+   // NOTE(law): Generate the random bytes to act as the user's
+   // password salt value.
+   unsigned char salt[sizeof(user.salt)];
+   get_random_bytes(salt, sizeof(salt));
+
+   unsigned char password_hash[sizeof(user.password_hash)];
+
+   pbkdf2_hmac_sha256(password_hash,
+                      sizeof(password_hash),
+                      (unsigned char *)password,
+                      string_length(password),
+                      salt,
+                      sizeof(salt),
+                      PBKDF2_PASSWORD_ITERATION_ACCOUNT);
+
+   // TODO(law): Add to user database.
+}
+
 static void
 process_request(Request_State *request)
 {
@@ -539,24 +716,83 @@ process_request(Request_State *request)
                request->SCRIPT_NAME,
                request->thread_id);
 
+   Memory_Arena *arena = &request->arena;
+   Key_Value_Table *form = &request->form;
+
    if(strings_are_equal(request->SCRIPT_NAME, "/"))
    {
       output_request_header(request, 200);
       OUTPUT_HTML_TEMPLATE("header.html");
-      OUTPUT_HTML_TEMPLATE("index.html");
-   }
-   else if(strings_are_equal(request->SCRIPT_NAME, "/login"))
-   {
-      if(strings_are_equal(request->REQUEST_METHOD, "POST"))
+
+      if(get_value(form, "login"))
       {
-         output_request_header(request, 200);
-         OUTPUT_HTML_TEMPLATE("header.html");
-         OUTPUT_HTML_TEMPLATE("login.html");
+         // Account login was attempted.
+         char *username = get_value(form, "username");
+         char *password = get_value(form, "password");
+
+         User_Account user = login_user(username, password);
+
+         if(!*username || !*password)
+         {
+            OUT("<p class=\"warning\">Please supply both a username and password.</p>");
+            OUTPUT_HTML_TEMPLATE("index.html");
+         }
+         else if(*user.username == 0)
+         {
+            OUT("<p class=\"warning\">That account does not exist.</p>");
+            OUTPUT_HTML_TEMPLATE("index.html");
+         }
+         else if(*user.password_hash == 0)
+         {
+            OUT("<p class=\"warning\">The provided username/password was incorrect.</p>");
+            OUTPUT_HTML_TEMPLATE("index.html");
+         }
+         else
+         {
+            OUT("<p class=\"success\">Success!</p>");
+         }
+      }
+      else if(get_value(form, "register"))
+      {
+         // Account registration was submitted.
+         char *username = get_value(form, "username");
+         char *password = get_value(form, "password");
+
+         // TODO(law): Add validation for evil characters.
+         if(!*username || !*password)
+         {
+            OUT("<p class=\"warning\">Please supply both a username and password.</p>");
+            OUTPUT_HTML_TEMPLATE("index.html");
+         }
+         else if(string_length(username) > MAX_USERNAME_LENGTH)
+         {
+            OUT("<p class=\"warning\">A username cannot exceed %d characters.</p>", MAX_USERNAME_LENGTH);
+            OUTPUT_HTML_TEMPLATE("index.html");
+         }
+         else if(string_length(password) > MAX_PASSWORD_LENGTH)
+         {
+            OUT("<p class=\"warning\">A password cannot exceed %d characters.</p>", MAX_PASSWORD_LENGTH);
+            OUTPUT_HTML_TEMPLATE("index.html");
+         }
+         else
+         {
+            User_Account user = get_user(username);
+            if(*user.username)
+            {
+               // Username was already taken.
+               OUT("<p class=\"warning\">That username already exists.</p>");
+               OUTPUT_HTML_TEMPLATE("index.html");
+            }
+            else
+            {
+               register_user(username, password);
+               OUT("<p class=\"success\">Your account registration has been submitted.</p>");
+            }
+         }
       }
       else
       {
-         redirect_request(request, "/");
-         return;
+         OUTPUT_HTML_TEMPLATE("index.html");
       }
    }
    else

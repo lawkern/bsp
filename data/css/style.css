@@ -12,13 +12,13 @@ input[type=password]
   padding: 0.2em;
 }
 
-button
+button, input[type=button], input[type=submit]
 {
   color: #aae;
   background: #334;
   border-color: #88e;
-  border-radius: 0.3em;
-  padding: 0.2em;
+  border-radius: 0.3rem;
+  padding: 0.2rem 0.35rem;
 }
 
 main, header {padding: 0.5em;}
@@ -34,6 +34,9 @@ header h1 a {color: #eee; text-decoration: none;}
 
 table {border-collapse: collapse;}
 th, td {padding: 0.2em; border: 1px solid dimgray;}
+
+.success {color: #98e084; text-align: center;}
+.warning {color: #e36959; text-align: center;}
 
 /* Debug Information */
 section#debug-information {padding: 0 1em; border-top: 1px solid #444; background: #181818;}

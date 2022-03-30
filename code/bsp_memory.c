@@ -77,6 +77,38 @@ memory_set(void *destination, size_t size, unsigned char value)
    memset(destination, value, size);
 }
 
+static void
+print_bytes(Request_State *request, void *source, size_t size)
+{
+   unsigned char *bytes = source;
+   for(size_t index = 0; index < size; ++index)
+   {
+      OUT("%02x", bytes[index]);
+   }
+}
+
+static void
+hexadecimal_string_to_bytes(unsigned char *destination, size_t destination_size,
+                            char *source, size_t source_size)
+{
+   assert((source_size & 1) == 0);
+   assert((2 * destination_size) >= source_size);
+
+   while(source_size > 0)
+   {
+      char hex_byte_string[3];
+      hex_byte_string[0] = *source++;
+      hex_byte_string[1] = *source++;
+      hex_byte_string[2] = 0;
+
+      // TODO(law): Remove dependency on stdlib.h.
+      *destination++ = strtol(hex_byte_string, 0, 16);
+
+      destination_size -= 1;
+      source_size      -= 2;
+   }
+}
+
 static bool
 bytes_are_equal(void *a, void *b, size_t size)
 {

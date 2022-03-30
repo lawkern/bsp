@@ -86,11 +86,13 @@ typedef struct
    Key_Value_Pair entries[1024];
 } Key_Value_Table;
 
+#define MAX_USERNAME_LENGTH 32
+#define MAX_PASSWORD_LENGTH 256
 typedef struct
 {
-   char username[33]; // includes null terminator
-   char salt[33]; // includes null terminator
-   SHA256 password_hash;
+   char username[MAX_USERNAME_LENGTH + 1]; // includes null terminator
+   unsigned char salt[16];
+   unsigned char password_hash[32]; // Width of SHA256 output
 } User_Account;
 
 typedef struct
