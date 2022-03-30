@@ -220,6 +220,10 @@ hash_sha256(unsigned char *message, size_t message_size)
 static SHA256
 hash_sha256_string(char *message)
 {
+   // NOTE(law): This only works on null-terminated C strings. Technically an
+   // input message could contain a 0-byte, which would throw off the count of
+   // string_length.
+
    SHA256 result = hash_sha256((unsigned char *)message, string_length(message));
    return result;
 }
@@ -279,29 +283,261 @@ hmac_sha256(unsigned char *key, size_t key_size,
 }
 
 static void
+pbkdf2_hmac_sha256(unsigned char *output_key,
+                   unsigned int output_key_size,
+                   unsigned char *password,
+                   size_t password_size,
+                   unsigned char *salt,
+                   size_t salt_size,
+                   unsigned int iteration_count)
+{
+   // Based on the description of PBKDF2 provided by
+   // https://datatracker.ietf.org/doc/html/rfc2898#section-5.2
+
+   // NOTE(law): The block size is assumed to be 32, given that this function is
+   // hard-coded to use the 32-bit SHA256 output.
+   unsigned int block_count = output_key_size / 32;
+   if((output_key_size % 32) != 0)
+   {
+      block_count++;
+   }
+
+   // If the output key size is not evenly divisible by the block size, the
+   // final block will not copy the full hash output.
+   unsigned int final_block_size = output_key_size - ((block_count - 1) * 32);
+
+   // The iteration starts at one, since the block index is as a part of the
+   // initial hash message of each iteration.
+   for(unsigned int block_index = 1; block_index <= block_count; ++block_index)
+   {
+      // The first iteration concatenates the salt with the Big Endian encoding
+      // of the 32-bit block index, and then uses that string as the initial
+      // hash message.
+
+      // TODO(law): This shouldn't need an allocation given the second part is
+      // always 4 bytes. Maybe require the provided salt to include an
+      // additional 4 unused bytes at the end?
+      size_t u1_size = salt_size + sizeof(unsigned int);
+      unsigned char *u1_message = allocate(u1_size);
+
+      memory_copy(u1_message, salt, salt_size);
+
+      // Append the block index in Big Endian order.
+      u1_message[salt_size + 0] = (unsigned char)(block_index >> 24);
+      u1_message[salt_size + 1] = (unsigned char)(block_index >> 16);
+      u1_message[salt_size + 2] = (unsigned char)(block_index >>  8);
+      u1_message[salt_size + 3] = (unsigned char)(block_index >>  0);
+
+      // The first hash iteration will be used as an accumulator to xor
+      // subsequent hash results.
+      SHA256 u1 = hmac_sha256(password, password_size, u1_message, u1_size);
+
+      unsigned char u_message[32] = {0};
+      memory_copy(u_message, u1.bytes, sizeof(u1.bytes));
+
+      for(unsigned int index = 2; index <= iteration_count; ++index)
+      {
+         // Calculate hash using the previous hash result as the message.
+         SHA256 u = hmac_sha256(password, password_size, u_message, sizeof(u_message));
+
+         // Accumulate xors into initial hash result.
+         for(unsigned int byte_index = 0; byte_index < 32; ++byte_index)
+         {
+            u1.bytes[byte_index] ^= u.bytes[byte_index];
+         }
+
+         // Store the current hash as the message for the next iteration.
+         memory_copy(u_message, u.bytes, sizeof(u.bytes));
+      }
+
+      // Concatenate the xor'ed result into the output key.
+      unsigned char *block_address = output_key + (32 * (block_index - 1));
+      if(block_index == block_count)
+      {
+         memory_copy(block_address, u1.bytes, final_block_size);
+      }
+      else
+      {
+         memory_copy(block_address, u1.bytes, 32);
+      }
+
+      deallocate(u1_message);
+   }
+}
+
+static void
 test_hash_sha256(unsigned int run_count)
 {
-   // TODO(law): Add tests to validate the resulting byte array, not just the
-   // string (there are some in test_hmac_sha256(), but this function can be
-   // expanded too).
+   for(unsigned int index = 0; index < run_count; ++index) // Basic tress test
+   {
+      {
+         SHA256 hash;
 
-   struct {
-      char *input;
-      char *output;
-   } hashes[] = {
+         unsigned char message_bytes[] = {};
+         unsigned char answer_bytes[] =
+         {
+            0xe3, 0xb0, 0xc4, 0x42, 0x98, 0xfc, 0x1c, 0x14,
+            0x9a, 0xfb, 0xf4, 0xc8, 0x99, 0x6f, 0xb9, 0x24,
+            0x27, 0xae, 0x41, 0xe4, 0x64, 0x9b, 0x93, 0x4c,
+            0xa4, 0x95, 0x99, 0x1b, 0x78, 0x52, 0xb8, 0x55,
+         };
+
+         char *message_text = "";
+         char *answer_text = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+         hash = hash_sha256(message_bytes, sizeof(message_bytes));
+         assert(bytes_are_equal(hash.bytes, answer_bytes, sizeof(hash.bytes)));
+         assert(strings_are_equal(hash.text, answer_text));
+
+         hash = hash_sha256_string(message_text);
+         assert(bytes_are_equal(hash.bytes, answer_bytes, sizeof(hash.bytes)));
+         assert(strings_are_equal(hash.text, answer_text));
+      }
       {
-         "",
-         "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-      },
+         SHA256 hash;
+
+         unsigned char message_bytes[] = {'a', 'b', 'c'};
+         unsigned char answer_bytes[] =
+         {
+            0xba, 0x78, 0x16, 0xbf, 0x8f, 0x01, 0xcf, 0xea,
+            0x41, 0x41, 0x40, 0xde, 0x5d, 0xae, 0x22, 0x23,
+            0xb0, 0x03, 0x61, 0xa3, 0x96, 0x17, 0x7a, 0x9c,
+            0xb4, 0x10, 0xff, 0x61, 0xf2, 0x00, 0x15, 0xad,
+         };
+
+         char *message_text = "abc";
+         char *answer_text = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+
+         hash = hash_sha256(message_bytes, sizeof(message_bytes));
+         assert(bytes_are_equal(hash.bytes, answer_bytes, sizeof(hash.bytes)));
+         assert(strings_are_equal(hash.text, answer_text));
+
+         hash = hash_sha256_string(message_text);
+         assert(bytes_are_equal(hash.bytes, answer_bytes, sizeof(hash.bytes)));
+         assert(strings_are_equal(hash.text, answer_text));
+      }
       {
-         "abc",
-         "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-      },
+         SHA256 hash;
+
+         unsigned char message_bytes[] =
+         {
+            'a', 'b', 'c', 'd', 'b', 'c', 'd', 'e', 'c', 'd',
+            'e', 'f', 'd', 'e', 'f', 'g', 'e', 'f', 'g', 'h',
+            'f', 'g', 'h', 'i', 'g', 'h', 'i', 'j', 'h', 'i',
+            'j', 'k', 'i', 'j', 'k', 'l', 'j', 'k', 'l', 'm',
+            'k', 'l', 'm', 'n', 'l', 'm', 'n', 'o', 'm', 'n',
+            'o', 'p', 'n', 'o', 'p', 'q',
+         };
+         unsigned char answer_bytes[] =
+         {
+            0x24, 0x8d, 0x6a, 0x61, 0xd2, 0x06, 0x38, 0xb8,
+            0xe5, 0xc0, 0x26, 0x93, 0x0c, 0x3e, 0x60, 0x39,
+            0xa3, 0x3c, 0xe4, 0x59, 0x64, 0xff, 0x21, 0x67,
+            0xf6, 0xec, 0xed, 0xd4, 0x19, 0xdb, 0x06, 0xc1,
+         };
+
+         char *message_text = "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
+         char *answer_text = "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1";
+
+         hash = hash_sha256(message_bytes, sizeof(message_bytes));
+         assert(bytes_are_equal(hash.bytes, answer_bytes, sizeof(hash.bytes)));
+         assert(strings_are_equal(hash.text, answer_text));
+
+         hash = hash_sha256_string(message_text);
+         assert(bytes_are_equal(hash.bytes, answer_bytes, sizeof(hash.bytes)));
+         assert(strings_are_equal(hash.text, answer_text));
+      }
       {
-         "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq",
-         "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
-      },
-      {
+         SHA256 hash;
+
+         unsigned char message_bytes[] =
+         {
+            'E', 'v', 'e', 'n', 'i', 'e', 't', ' ', 'a', 'l', 'i', 'a',
+            's', ' ', 'a', 'u', 't', ' ', 'e', 't', ' ', 'c', 'o', 'r',
+            'r', 'u', 'p', 't', 'i', '.', ' ', 'A', 'c', 'c', 'u', 's',
+            'a', 'n', 't', 'i', 'u', 'm', ' ', 'a', 'u', 't', 'e', 'm',
+            ' ', 'n', 'o', 's', 't', 'r', 'u', 'm', ' ', 'm', 'a', 'x',
+            'i', 'm', 'e', ' ', 'r', 'e', 'p', 'e', 'l', 'l', 'a', 't',
+            '.', ' ', 'E', 's', 't', ' ', 'i', 'n', ' ', 'e', 'i', 'u',
+            's', ' ', 'q', 'u', 'a', 's', 'i', ' ', 'e', 's', 't', '.',
+            ' ', 'E', 'a', ' ', 'a', 's', 'p', 'e', 'r', 'i', 'o', 'r',
+            'e', 's', ' ', 'p', 'o', 'r', 'r', 'o', ' ', 'm', 'o', 'l',
+            'e', 's', 't', 'i', 'a', 'e', ' ', 'r', 'e', 'p', 'e', 'l',
+            'l', 'e', 'n', 'd', 'u', 's', '.', ' ', 'E', 's', 't', ' ',
+            'e', 'o', 's', ' ', 'q', 'u', 'i', ' ', 'i', 'l', 'l', 'u',
+            'm', '.', ' ', 'A', 's', 'p', 'e', 'r', 'i', 'o', 'r', 'e',
+            's', ' ', 'q', 'u', 'o', 'd', ' ', 'd', 'o', 'l', 'o', 'r',
+            'e', ' ', 'p', 'l', 'a', 'c', 'e', 'a', 't', ' ', 'e', 'o',
+            's', ' ', 'e', 'x', 'p', 'l', 'i', 'c', 'a', 'b', 'o', ' ',
+            'e', 'x', 'p', 'e', 'd', 'i', 't', 'a', '.', ' ', 'S', 'o',
+            'l', 'u', 't', 'a', ' ', 'n', 'i', 'h', 'i', 'l', ' ', 'v',
+            'o', 'l', 'u', 'p', 't', 'a', 't', 'e', 'm', ' ', 's', 'e',
+            'd', '.', ' ', 'O', 'm', 'n', 'i', 's', ' ', 'd', 'i', 'c',
+            't', 'a', ' ', 'd', 'e', 'l', 'e', 'n', 'i', 't', 'i', ' ',
+            'v', 'i', 't', 'a', 'e', ' ', 'p', 'r', 'a', 'e', 's', 'e',
+            'n', 't', 'i', 'u', 'm', ' ', 'm', 'o', 'l', 'e', 's', 't',
+            'i', 'a', 'e', ' ', 'c', 'o', 'n', 's', 'e', 'q', 'u', 'a',
+            't', 'u', 'r', '.', ' ', 'V', 'e', 'l', 'i', 't', ' ', 'e',
+            'x', 'p', 'e', 'd', 'i', 't', 'a', ' ', 'c', 'o', 'r', 'p',
+            'o', 'r', 'i', 's', ' ', 'e', 'x', '.', ' ', 'P', 'e', 'r',
+            'f', 'e', 'r', 'e', 'n', 'd', 'i', 's', ' ', 'e', 'u', 'm',
+            ' ', 'n', 'o', 'b', 'i', 's', ' ', 'q', 'u', 'i', ' ', 'a',
+            'u', 't', ' ', 'c', 'u', 'm', 'q', 'u', 'e', ' ', 'v', 'o',
+            'l', 'u', 'p', 't', 'a', 't', 'e', 's', '.', ' ', 'S', 'i',
+            'm', 'i', 'l', 'i', 'q', 'u', 'e', ' ', 'r', 'a', 't', 'i',
+            'o', 'n', 'e', ' ', 'p', 'a', 'r', 'i', 'a', 't', 'u', 'r',
+            ' ', 'q', 'u', 'i', ' ', 'e', 'x', 'p', 'e', 'd', 'i', 't',
+            'a', ' ', 'd', 'e', 'l', 'e', 'n', 'i', 't', 'i', ' ', 'i',
+            'l', 'l', 'u', 'm', ' ', 'v', 'o', 'l', 'u', 'p', 't', 'a',
+            't', 'e', 'm', '.', ' ', 'Q', 'u', 'i', ' ', 'f', 'a', 'c',
+            'i', 'l', 'i', 's', ' ', 'r', 'e', 'r', 'u', 'm', ' ', 'v',
+            'o', 'l', 'u', 'p', 't', 'a', 't', 'e', 's', '.', ' ', 'R',
+            'e', 'p', 'u', 'd', 'i', 'a', 'n', 'd', 'a', 'e', ' ', 's',
+            'u', 's', 'c', 'i', 'p', 'i', 't', ' ', 'a', 'u', 't', ' ',
+            'i', 'u', 's', 't', 'o', ' ', 'd', 'e', 'l', 'e', 'n', 'i',
+            't', 'i', ' ', 'n', 'o', 'n', ' ', 't', 'o', 't', 'a', 'm',
+            '.', ' ', 'S', 'e', 'd', ' ', 'a', ' ', 'a', 'p', 'e', 'r',
+            'i', 'a', 'm', ' ', 'f', 'a', 'c', 'e', 'r', 'e', ' ', 'q',
+            'u', 'a', 's', 'i', ' ', 'o', 'm', 'n', 'i', 's', ' ', 'f',
+            'a', 'c', 'i', 'l', 'i', 's', ' ', 'q', 'u', 'a', 'm', ' ',
+            'n', 'o', 'n', '.', ' ', 'Q', 'u', 'i', ' ', 'n', 'e', 'q',
+            'u', 'e', ' ', 'q', 'u', 'o', 'd', ' ', 'a', 'u', 't', ' ',
+            'o', 'f', 'f', 'i', 'c', 'i', 'i', 's', ' ', 'm', 'i', 'n',
+            'i', 'm', 'a', ' ', 'v', 'o', 'l', 'u', 'p', 't', 'a', 's',
+            '.', ' ', 'P', 'a', 'r', 'i', 'a', 't', 'u', 'r', ' ', 'o',
+            'c', 'c', 'a', 'e', 'c', 'a', 't', 'i', ' ', 'v', 'o', 'l',
+            'u', 'p', 't', 'a', 's', ' ', 'e', 's', 's', 'e', ' ', 'v',
+            'o', 'l', 'u', 'p', 't', 'a', 's', '.', ' ', 'C', 'o', 'm',
+            'm', 'o', 'd', 'i', ' ', 'r', 'e', 'p', 'e', 'l', 'l', 'a',
+            't', ' ', 'o', 'p', 't', 'i', 'o', ' ', 'e', 't', ' ', 'v',
+            'o', 'l', 'u', 'p', 't', 'a', 't', 'e', 'm', ' ', 'r', 'e',
+            'i', 'c', 'i', 'e', 'n', 'd', 'i', 's', ' ', 'd', 'o', 'l',
+            'o', 'r', 'u', 'm', '.', ' ', 'Q', 'u', 'a', 'm', ' ', 'd',
+            'o', 'l', 'o', 'r', 'u', 'm', ' ', 's', 'i', 'n', 't', ' ',
+            'e', 'i', 'u', 's', '.', ' ', 'Q', 'u', 'o', ' ', 'v', 'o',
+            'l', 'u', 'p', 't', 'a', 's', ' ', 'a', 'd', ' ', 'e', 'o',
+            's', ' ', 'd', 'i', 'g', 'n', 'i', 's', 's', 'i', 'm', 'o',
+            's', ' ', 'i', 'n', 'v', 'e', 'n', 't', 'o', 'r', 'e', ' ',
+            'q', 'u', 'i', ' ', 'l', 'i', 'b', 'e', 'r', 'o', '.', ' ',
+            'N', 'i', 'h', 'i', 'l', ' ', 'r', 'e', 'p', 'e', 'l', 'l',
+            'a', 't', ' ', 'o', 'm', 'n', 'i', 's', ' ', 'i', 'l', 'l',
+            'u', 'm', '.', ' ', 'E', 'u', 'm', ' ', 'v', 'o', 'l', 'u',
+            'p', 't', 'a', 's', ' ', 'v', 'o', 'l', 'u', 'p', 't', 'a',
+            's', ' ', 'v', 'e', 'l', ' ', 's', 'e', 'q', 'u', 'i', ' ',
+            's', 'e', 'd', ' ', 'r', 'e', 'i', 'c', 'i', 'e', 'n', 'd',
+            'i', 's', '.', ' ', 'D', 'o', 'l', 'o', 'r', 'i', 'b', 'u',
+            's', ' ', 'e', 's', 't', ' ', 'a', 'm', 'e', 't', ' ', 'a',
+            'n', 'i', 'm', 'i', ' ', 'h', 'i', 'c', '.',
+         };
+         unsigned char answer_bytes[] =
+         {
+            0x34, 0x0d, 0x3d, 0x2c, 0x6c, 0x19, 0x81, 0x12,
+            0x86, 0x0d, 0x0f, 0x6d, 0xda, 0xfe, 0x51, 0xa1,
+            0x7e, 0x95, 0xc4, 0x11, 0xa1, 0x18, 0x10, 0xc0,
+            0x15, 0x2e, 0xf2, 0x08, 0x08, 0xdd, 0x0e, 0x42,
+         };
+
+         char *message_text =
          "Eveniet alias aut et corrupti. Accusantium autem nostrum maxime repellat."
          " Est in eius quasi est. Ea asperiores porro molestiae repellendus. Est "
          "eos qui illum. Asperiores quod dolore placeat eos explicabo expedita. "
@@ -314,25 +550,18 @@ test_hash_sha256(unsigned int run_count)
          "occaecati voluptas esse voluptas. Commodi repellat optio et voluptatem "
          "reiciendis dolorum. Quam dolorum sint eius. Quo voluptas ad eos "
          "dignissimos inventore qui libero. Nihil repellat omnis illum. Eum "
-         "voluptas voluptas vel sequi sed reiciendis. Doloribus est amet animi hic.",
-         "340d3d2c6c198112860d0f6ddafe51a17e95c411a11810c0152ef20808dd0e42"
-      },
-   };
+         "voluptas voluptas vel sequi sed reiciendis. Doloribus est amet animi hic.";
 
-   for(unsigned int index = 0; index < run_count; ++index) // Basic tress test
-   {
-      for(unsigned int index = 0; index < ARRAY_LENGTH(hashes); ++index)
-      {
-         SHA256 hash;
+         char *answer_text = "340d3d2c6c198112860d0f6ddafe51a17e95c411a11810c0152ef20808dd0e42";
 
-         char *input  = hashes[index].input;
-         char *output = hashes[index].output;
+         hash = hash_sha256(message_bytes, sizeof(message_bytes));
+         assert(bytes_are_equal(hash.bytes, answer_bytes, sizeof(hash.bytes)));
+         assert(strings_are_equal(hash.text, answer_text));
 
-         hash = hash_sha256((unsigned char *)input, string_length(input));
-         assert(strings_are_equal(hash.text, output));
+         hash = hash_sha256_string(message_text);
+         assert(bytes_are_equal(hash.bytes, answer_bytes, sizeof(hash.bytes)));
+         assert(strings_are_equal(hash.text, answer_text));
 
-         hash = hash_sha256_string(input);
-         assert(strings_are_equal(hash.text, output));
       }
    }
 }
@@ -575,6 +804,94 @@ test_hmac_sha256(unsigned int run_count)
          "9b09ffa71b942fcb27635fbcd5b0e944bfdc63644f0713938a7f51535c3a35e2";
 
          TEST_HMAC_SHA256();
+      }
+   }
+}
+
+static void
+test_pbkdf2_hmac_sha256(unsigned int run_count)
+{
+   // Test values taken from top rated answer at
+   // https://stackoverflow.com/questions/5130513/pbkdf2-hmac-sha2-test-vectors
+
+   for(unsigned int index = 0; index < run_count; ++index)
+   {
+      {
+         unsigned char key[32];
+         unsigned char password[] = {'p', 'a', 's', 's', 'w', 'o', 'r', 'd'};
+         unsigned char salt[] = {'s', 'a', 'l', 't'};
+         unsigned char answer1[] =
+         {
+            0x12, 0x0f, 0xb6, 0xcf, 0xfc, 0xf8, 0xb3, 0x2c,
+            0x43, 0xe7, 0x22, 0x52, 0x56, 0xc4, 0xf8, 0x37,
+            0xa8, 0x65, 0x48, 0xc9, 0x2c, 0xcc, 0x35, 0x48,
+            0x08, 0x05, 0x98, 0x7c, 0xb7, 0x0b, 0xe1, 0x7b
+         };
+
+         pbkdf2_hmac_sha256(key, sizeof(key), password, sizeof(password), salt, sizeof(salt), 1);
+         assert(bytes_are_equal(key, answer1, sizeof(key)));
+
+         unsigned char answer2[] =
+         {
+            0xae, 0x4d, 0x0c, 0x95, 0xaf, 0x6b, 0x46, 0xd3,
+            0x2d, 0x0a, 0xdf, 0xf9, 0x28, 0xf0, 0x6d, 0xd0,
+            0x2a, 0x30, 0x3f, 0x8e, 0xf3, 0xc2, 0x51, 0xdf,
+            0xd6, 0xe2, 0xd8, 0x5a, 0x95, 0x47, 0x4c, 0x43,
+         };
+
+         pbkdf2_hmac_sha256(key, sizeof(key), password, sizeof(password), salt, sizeof(salt), 2);
+         assert(bytes_are_equal(key, answer2, sizeof(key)));
+
+         unsigned char answer3[] =
+         {
+            0xc5, 0xe4, 0x78, 0xd5, 0x92, 0x88, 0xc8, 0x41,
+            0xaa, 0x53, 0x0d, 0xb6, 0x84, 0x5c, 0x4c, 0x8d,
+            0x96, 0x28, 0x93, 0xa0, 0x01, 0xce, 0x4e, 0x11,
+            0xa4, 0x96, 0x38, 0x73, 0xaa, 0x98, 0x13, 0x4a,
+         };
+
+         pbkdf2_hmac_sha256(key, sizeof(key), password, sizeof(password), salt, sizeof(salt), 4096);
+         assert(bytes_are_equal(key, answer3, sizeof(key)));
+      }
+      {
+         unsigned char key[40];
+         unsigned char password[] =
+         {
+            'p', 'a', 's', 's', 'w', 'o', 'r', 'd',
+            'P', 'A', 'S', 'S', 'W', 'O', 'R', 'D',
+            'p', 'a', 's', 's', 'w', 'o', 'r', 'd'
+         };
+         unsigned char salt[] =
+         {
+            's', 'a', 'l', 't', 'S', 'A', 'L', 'T',
+            's', 'a', 'l', 't', 'S', 'A', 'L', 'T',
+            's', 'a', 'l', 't', 'S', 'A', 'L', 'T',
+            's', 'a', 'l', 't', 'S', 'A', 'L', 'T',
+            's', 'a', 'l', 't',
+         };
+         unsigned char answer[] =
+         {
+            0x34, 0x8c, 0x89, 0xdb, 0xcb, 0xd3, 0x2b, 0x2f, 0x32, 0xd8,
+            0x14, 0xb8, 0x11, 0x6e, 0x84, 0xcf, 0x2b, 0x17, 0x34, 0x7e,
+            0xbc, 0x18, 0x00, 0x18, 0x1c, 0x4e, 0x2a, 0x1f, 0xb8, 0xdd,
+            0x53, 0xe1, 0xc6, 0x35, 0x51, 0x8c, 0x7d, 0xac, 0x47, 0xe9,
+         };
+
+         pbkdf2_hmac_sha256(key, sizeof(key), password, sizeof(password), salt, sizeof(salt), 4096);
+         assert(bytes_are_equal(key, answer, sizeof(key)));
+      }
+      {
+         unsigned char key[16];
+         unsigned char password[] = {'p', 'a', 's', 's', 0, 'w', 'o', 'r', 'd'};
+         unsigned char salt[] = {'s', 'a', 0, 'l', 't'};
+         unsigned char answer[] =
+         {
+            0x89, 0xb6, 0x9d, 0x05, 0x16, 0xf8, 0x29, 0x89,
+            0x3c, 0x69, 0x62, 0x26, 0x65, 0x0a, 0x86, 0x87,
+         };
+
+         pbkdf2_hmac_sha256(key, sizeof(key), password, sizeof(password), salt, sizeof(salt), 4096);
+         assert(bytes_are_equal(key, answer, sizeof(key)));
       }
    }
 }

@@ -365,8 +365,9 @@ initialize_application()
 
 #if DEVELOPMENT_BUILD
    // NOTE(law): Perform any automated testing.
-   test_hash_sha256(20000);
-   test_hmac_sha256(20000);
+   test_hash_sha256(4096);
+   test_hmac_sha256(4096);
+   test_pbkdf2_hmac_sha256(32);
 #endif
 
    // NOTE(law): Read user accounts into memory.
@@ -403,7 +404,7 @@ output_html_template(Request_State *request, char *path)
 {
    // NOTE(law): Because of the way this output method works, the contents of
    // the html file is treated as a format string. Therefore, % symbols need to
-   // be escaped to work normally (assuming that no addtional arguments are
+   // be escaped to work normally (assuming that no additional arguments are
    // passed to OUT()).
 
    char *html = get_value(&global_html_template_table, path);
