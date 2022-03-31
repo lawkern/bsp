@@ -1,0 +1,27 @@
+<style>
+  form
+  {
+    text-align: center;
+    padding: 0;
+    margin: auto;
+    width: 50ch;
+    max-width: 95%%;
+  }
+
+  input[type=text], input[type=password]
+  {
+    display: block;
+    margin: 0.5rem auto;
+    width: 100%%;
+  }
+
+  input[type=submit] {margin: 0.5rem;}
+</style>
+
+<form method="post" action="/">
+  <input type="text" name="username" placeholder="Username" maxlength="32" required>
+  <input type="password" name="password" placeholder="Password" maxlength="256" required>
+
+  <input type="submit" name="login" value="Log in to BSP">
+  <input type="submit" name="register" value="Create an Account">
+</form>

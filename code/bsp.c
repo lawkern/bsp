@@ -75,7 +75,7 @@ import_users_from_database(User_Account_Table *table)
             ++scan;
          }
          assert((scan - username_start) <= (ARRAY_LENGTH(user.username) - 1));
-         memcpy(user.username, username_start, scan - username_start);
+         memory_copy(user.username, username_start, scan - username_start);
 
          // Skip newline
          ++scan;
@@ -191,7 +191,7 @@ hash_key_string(char *string)
 }
 
 static Key_Value_Pair
-consume_key_value_pair(Memory_Arena *arena, char **key_value_string)
+consume_key_value_pair(Memory_Arena *arena, char **key_value_string, char delimiter)
 {
    // NOTE(law): The convention here is that *result.key == 0 implies that
    // another pair could not be found in the parsed string.
@@ -204,7 +204,7 @@ consume_key_value_pair(Memory_Arena *arena, char **key_value_string)
       char *start = *key_value_string;
       char *scan = start;
 
-      while(*scan && *scan != '&' && *scan != '=')
+      while(*scan && *scan != delimiter && *scan != '=')
       {
          scan++;
       }
@@ -216,7 +216,7 @@ consume_key_value_pair(Memory_Arena *arena, char **key_value_string)
          return result;
       }
 
-      memcpy(result.key, start, key_size);
+      memory_copy(result.key, start, key_size);
       result.key[key_size] = 0;
 
       if(*scan == '=')
@@ -226,7 +226,7 @@ consume_key_value_pair(Memory_Arena *arena, char **key_value_string)
 
          // Consume value of parameter:
          start = scan;
-         while(*scan && *scan != '&')
+         while(*scan && *scan != delimiter)
          {
             scan++;
          }
@@ -239,14 +239,22 @@ consume_key_value_pair(Memory_Arena *arena, char **key_value_string)
             return result;
          }
 
-         memcpy(result.value, start, value_size);
+         memory_copy(result.value, start, value_size);
          result.value[value_size] = 0;
       }
 
-      if(*scan == '&')
+      if(*scan == delimiter)
       {
-         // Skip '&' character:
+         // Skip delimiter character:
          scan++;
+
+         // NOTE(law): If the delimiter is a ';' (i.e. we are parsing a cookie
+         // string) skip any whitespace between the delimiter and the next
+         // entry.
+         while(delimiter == ';' && is_whitespace(*scan))
+         {
+            scan++;
+         }
       }
 
       *key_value_string = scan;
@@ -329,9 +337,31 @@ initialize_request(Request_State *request)
 
    Memory_Arena *arena = &request->arena;
 
+   Key_Value_Table *url = &request->url;
+   Key_Value_Table *form = &request->form;
+   Key_Value_Table *cookies = &request->cookies;
+
+   char *cookie_string = request->HTTP_COOKIE;
+   if(cookie_string)
+   {
+      Key_Value_Pair parameter = consume_key_value_pair(arena, &cookie_string, ';');
+      while(*parameter.key)
+      {
+         insert_key_value(cookies, parameter.key, parameter.value);
+         parameter = consume_key_value_pair(arena, &cookie_string, ';');
+      }
+   }
+
+   char *session_id = get_value(cookies, "bsp_session_id");
+   if(session_id)
+   {
+      // TODO(law): Check for valid existing session that matches the id
+      // provided by the client.
+   }
+
    // Update request data with URL parameters from query string.
    char *query_string = request->QUERY_STRING;
-   Key_Value_Pair parameter = consume_key_value_pair(arena, &query_string);
+   Key_Value_Pair parameter = consume_key_value_pair(arena, &query_string, '&');
    while(*parameter.key)
    {
       size_t key_size   = string_length(parameter.key) + 1;
@@ -348,8 +378,8 @@ initialize_request(Request_State *request)
       decode_query_string(decoded_key, parameter.key, key_size);
       decode_query_string(decoded_value, parameter.value, value_size);
 
-      insert_key_value(&request->url, decoded_key, decoded_value);
-      parameter = consume_key_value_pair(arena, &query_string);
+      insert_key_value(url, decoded_key, decoded_value);
+      parameter = consume_key_value_pair(arena, &query_string, '&');
    }
 
    // Update request data with form parameters from POST request.
@@ -361,7 +391,7 @@ initialize_request(Request_State *request)
       {
          GET_STRING_FROM_INPUT_STREAM(post_data, content_length + 1);
 
-         Key_Value_Pair parameter = consume_key_value_pair(arena, &post_data);
+         Key_Value_Pair parameter = consume_key_value_pair(arena, &post_data, '&');
          while(*parameter.key)
          {
             size_t key_size   = string_length(parameter.key) + 1;
@@ -378,8 +408,8 @@ initialize_request(Request_State *request)
             decode_query_string(decoded_key, parameter.key, key_size);
             decode_query_string(decoded_value, parameter.value, value_size);
 
-            insert_key_value(&request->form, decoded_key, decoded_value);
-            parameter = consume_key_value_pair(arena, &post_data);
+            insert_key_value(form, decoded_key, decoded_value);
+            parameter = consume_key_value_pair(arena, &post_data, '&');
          }
       }
    }
@@ -409,7 +439,8 @@ initialize_application()
       // doesn't just scan the html directory).
 
       "html/header.html",
-      "html/index.html",
+      "html/footer.html",
+      "html/authentication-form.html",
       "html/404.html",
    };
 
@@ -519,6 +550,7 @@ debug_output_request_data(Request_State *request)
    Memory_Arena *arena = &request->arena;
    Key_Value_Table *url = &request->url;
    Key_Value_Table *form = &request->form;
+   Key_Value_Table *cookies = &request->cookies;
 
    OUT("<section id=\"debug-information\">");
 
@@ -545,6 +577,23 @@ debug_output_request_data(Request_State *request)
    for(unsigned int index = 0; index < ARRAY_LENGTH(form->entries); ++index)
    {
       Key_Value_Pair *parameter = form->entries + index;
+      if(parameter->key && *parameter->key)
+      {
+         char *value = (parameter->value) ? parameter->value : "";
+         OUT("<tr>");
+         OUT("<td>%s</td>", encode_for_html(arena, parameter->key));
+         OUT("<td>%s</td>", encode_for_html(arena, value));
+         OUT("</tr>");
+      }
+   }
+   OUT("</table>");
+
+   // Output form parameters
+   OUT("<table>");
+   OUT("<tr><th>Cookie</th><th>Value</th></tr>");
+   for(unsigned int index = 0; index < ARRAY_LENGTH(cookies->entries); ++index)
+   {
+      Key_Value_Pair *parameter = cookies->entries + index;
       if(parameter->key && *parameter->key)
       {
          char *value = (parameter->value) ? parameter->value : "";
@@ -642,56 +691,89 @@ redirect_request(Request_State *request, char *path)
 
 #define PBKDF2_PASSWORD_ITERATION_ACCOUNT 100000
 
-static User_Account
-login_user(char *username, char *password)
+static void
+login_user(Request_State *request, char *username, char *password)
 {
-   // NOTE(law): The convention here is that *result.username == 0 means that
-   // the user doesn't exists, while *result.password_hash == 0 or *result.salt
-   // == 0 means that the supplied password was incorrect.
-
    // NOTE(law): This and the account registration code are the only areas of
    // the codebase that work with the user's password directly. It only ever
    // exists in working memory - only the salt value and resulting hash are ever
    // saved to disc.
 
-   User_Account result = {0};
+   if(!*username || !*password)
+   {
+      // "Please supply both a username and password."
+      redirect_request(request, "/?error=missing-auth");
+      return;
+   }
+
+   User_Account user = get_user(username);
+
+   if(*user.username == 0)
+   {
+      // "That account does not exist."
+      redirect_request(request, "/?error=not-account");
+      return;
+   }
+
+   unsigned char password_hash[sizeof(user.password_hash)];
+   unsigned char *password_bytes = (unsigned char *)password;
+   size_t password_size = string_length(password);
+
+   pbkdf2_hmac_sha256(password_hash,
+                      sizeof(password_hash),
+                      password_bytes,
+                      password_size,
+                      user.salt,
+                      sizeof(user.salt),
+                      PBKDF2_PASSWORD_ITERATION_ACCOUNT);
+
+   if(!bytes_are_equal(password_hash, user.password_hash, sizeof(user.password_hash)))
+   {
+      // "The provided username/password was incorrect."
+      redirect_request(request, "/?error=wrong-password");
+      return;
+   }
+
+   // TODO(law): Store session information and generate session cookie.
+   redirect_request(request, "/?login=success");
+}
+
+static void
+register_user(Request_State *request, char *username, char *password)
+{
+   // TODO(law): Add validation for evil characters.
+
+   if(!*username || !*password)
+   {
+      // "Please supply both a username and password."
+      redirect_request(request, "/?error=missing-auth");
+      return;
+   }
+
+   if(string_length(username) > MAX_USERNAME_LENGTH)
+   {
+      // "A username cannot exceed %d characters."
+      redirect_request(request, "/?error=username-too-long");
+      return;
+   }
+
+   if(string_length(password) > MAX_PASSWORD_LENGTH)
+   {
+      // "A password cannot exceed %d characters.", MAX_PASSWORD_LENGTH
+      redirect_request(request, "/?error=password-too-long");
+      return;
+   }
 
    User_Account user = get_user(username);
    if(*user.username)
    {
-      // NOTE(law): Save the name to indicate that the account existed.
-      memory_copy(result.username, username, sizeof(result.username));
-
-      unsigned char password_hash[sizeof(user.password_hash)];
-      unsigned char *password_bytes = (unsigned char *)password;
-      size_t password_size = string_length(password);
-
-      pbkdf2_hmac_sha256(password_hash,
-                         sizeof(password_hash),
-                         password_bytes,
-                         password_size,
-                         user.salt,
-                         sizeof(user.salt),
-                         PBKDF2_PASSWORD_ITERATION_ACCOUNT);
-
-      // NOTE(law): If the password hash matches that of the existing account,
-      // they can log in (so fill out the rest of the result struct).
-      if(bytes_are_equal(password_hash, user.password_hash, sizeof(user.password_hash)))
-      {
-         result = user;
-      }
+      // "That username already exists."
+      redirect_request(request, "/?error=user-exists");
+      return;
    }
 
-   return result;
-}
-
-static void
-register_user(char *username, char *password)
-{
-   User_Account user = {0};
-
-   // NOTE(law): Generate the random bytes to act as the user's
-   // password salt value.
+   // NOTE(law): Generate the random bytes that will act as the user's salt
+   // value for producing their password hash.
    unsigned char salt[sizeof(user.salt)];
    get_random_bytes(salt, sizeof(salt));
 
@@ -705,7 +787,9 @@ register_user(char *username, char *password)
                       sizeof(salt),
                       PBKDF2_PASSWORD_ITERATION_ACCOUNT);
 
-   // TODO(law): Add to user database.
+   // TODO(law): Add new user to user database.
+   // TODO(law): Login user to new account
+   redirect_request(request, "/?login=success");
 }
 
 static void
@@ -718,81 +802,55 @@ process_request(Request_State *request)
 
    Memory_Arena *arena = &request->arena;
    Key_Value_Table *form = &request->form;
+   Key_Value_Table *url = &request->url;
 
    if(strings_are_equal(request->SCRIPT_NAME, "/"))
    {
-      output_request_header(request, 200);
-      OUTPUT_HTML_TEMPLATE("header.html");
-
-      if(get_value(form, "login"))
+      if(strings_are_equal(request->REQUEST_METHOD, "POST"))
       {
-         // Account login was attempted.
-         char *username = get_value(form, "username");
-         char *password = get_value(form, "password");
+         if(get_value(form, "login"))
+         {
+            // Account login was attempted.
+            char *username = get_value(form, "username");
+            char *password = get_value(form, "password");
 
-         User_Account user = login_user(username, password);
+            login_user(request, username, password);
+         }
+         else if(get_value(form, "register"))
+         {
+            // Account registration was submitted.
+            char *username = get_value(form, "username");
+            char *password = get_value(form, "password");
 
-         if(!*username || !*password)
-         {
-            OUT("<p class=\"warning\">Please supply both a username and password.</p>");
-            OUTPUT_HTML_TEMPLATE("index.html");
-         }
-         else if(*user.username == 0)
-         {
-            OUT("<p class=\"warning\">That account does not exist.</p>");
-            OUTPUT_HTML_TEMPLATE("index.html");
-         }
-         else if(*user.password_hash == 0)
-         {
-            OUT("<p class=\"warning\">The provided username/password was incorrect.</p>");
-            OUTPUT_HTML_TEMPLATE("index.html");
+            register_user(request, username, password);
          }
          else
          {
-            OUT("<p class=\"success\">Success!</p>");
-         }
-      }
-      else if(get_value(form, "register"))
-      {
-         // Account registration was submitted.
-         char *username = get_value(form, "username");
-         char *password = get_value(form, "password");
-
-         // TODO(law): Add validation for evil characters.
-         if(!*username || !*password)
-         {
-            OUT("<p class=\"warning\">Please supply both a username and password.</p>");
-            OUTPUT_HTML_TEMPLATE("index.html");
-         }
-         else if(string_length(username) > MAX_USERNAME_LENGTH)
-         {
-            OUT("<p class=\"warning\">A username cannot exceed %d characters.</p>", MAX_USERNAME_LENGTH);
-            OUTPUT_HTML_TEMPLATE("index.html");
-         }
-         else if(string_length(password) > MAX_PASSWORD_LENGTH)
-         {
-            OUT("<p class=\"warning\">A password cannot exceed %d characters.</p>", MAX_PASSWORD_LENGTH);
-            OUTPUT_HTML_TEMPLATE("index.html");
-         }
-         else
-         {
-            User_Account user = get_user(username);
-            if(*user.username)
-            {
-               // Username was already taken.
-               OUT("<p class=\"warning\">That username already exists.</p>");
-               OUTPUT_HTML_TEMPLATE("index.html");
-            }
-            else
-            {
-               register_user(username, password);
-               OUT("<p class=\"success\">Your account registration has been submitted.</p>");
-            }
+            // Invalid code path;
+            assert(0);
          }
       }
       else
       {
-         OUTPUT_HTML_TEMPLATE("index.html");
+         output_request_header(request, 200);
+         OUTPUT_HTML_TEMPLATE("header.html");
+
+         char *error = get_value(url, "error");
+         if(error)
+         {
+            OUT("<p class=\"warning\">%s</p>", encode_for_html(arena, error));
+         }
+
+         if(get_value(url, "login"))
+         {
+            OUT("<p class=\"success\">You are logged in!</p>");
+         }
+         else
+         {
+            OUTPUT_HTML_TEMPLATE("authentication-form.html");
+         }
+
+         OUTPUT_HTML_TEMPLATE("footer.html");
       }
    }
    else
@@ -800,6 +858,7 @@ process_request(Request_State *request)
       output_request_header(request, 404);
       OUTPUT_HTML_TEMPLATE("header.html");
       OUTPUT_HTML_TEMPLATE("404.html");
+      OUTPUT_HTML_TEMPLATE("footer.html");
    }
 
    debug_output_request_data(request);

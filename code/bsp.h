@@ -87,7 +87,7 @@ typedef struct
 } Key_Value_Table;
 
 #define MAX_USERNAME_LENGTH 32
-#define MAX_PASSWORD_LENGTH 256
+#define MAX_PASSWORD_LENGTH 512
 typedef struct
 {
    char username[MAX_USERNAME_LENGTH + 1]; // includes null terminator
@@ -115,6 +115,7 @@ typedef struct
 
    Key_Value_Table url;
    Key_Value_Table form;
+   Key_Value_Table cookies;
 } Request_State;
 
 #define BSP_H

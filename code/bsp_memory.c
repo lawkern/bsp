@@ -29,6 +29,19 @@ string_to_integer_decimal(char *string)
    return result;
 }
 
+static bool
+is_whitespace(char c)
+{
+   bool result = (c == ' '  ||
+                  c == '\t' ||
+                  c == '\n' ||
+                  c == '\f' ||
+                  c == '\v' ||
+                  c == '\r');
+
+   return result;
+}
+
 static size_t
 format_string_list(char *destination, size_t size, char *format, va_list arguments)
 {
