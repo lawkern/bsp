@@ -193,8 +193,10 @@ hash_key_string(char *string)
 static Key_Value_Pair
 consume_key_value_pair(Memory_Arena *arena, char **key_value_string, char delimiter)
 {
-   // NOTE(law): The convention here is that *result.key == 0 implies that
-   // another pair could not be found in the parsed string.
+   // NOTE(law): The convention here is that result.key == "" (i.e. *result.key
+   // == 0) implies that a pair could not be pulled from the parsed string. In
+   // cases where a key exists but a value does not (e.g. the "baz" in
+   // "foo=bar&baz"), the value defaults to an empty string.
 
    Key_Value_Pair result = {0};
 
@@ -255,6 +257,18 @@ consume_key_value_pair(Memory_Arena *arena, char **key_value_string, char delimi
          {
             scan++;
          }
+      }
+
+      if(result.key && !result.value)
+      {
+         // NOTE(law): Default non-existent values to an empty string.
+         result.value = PUSH_SIZE(arena, 1);
+         if(!result.value)
+         {
+            result.key = 0;
+            return result;
+         }
+         result.value[0] = 0;
       }
 
       *key_value_string = scan;
