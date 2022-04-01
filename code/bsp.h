@@ -65,6 +65,7 @@ static PLATFORM_GET_RANDOM_BYTES(get_random_bytes);
    X(HTTP_FORWARDED)                            \
    X(HTTP_HOST)                                 \
    X(HTTP_PROXY_AUTHORIZATION)                  \
+   X(HTTP_REFERER)                              \
    X(HTTP_USER_AGENT)
 
 typedef struct
@@ -108,6 +109,7 @@ typedef struct
 
    Memory_Arena arena;
    long thread_id;
+   char session_id[65]; // Include null terminator
 
 #define X(v) char *(v);
    CGI_METAVARIABLES_LIST

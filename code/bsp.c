@@ -129,6 +129,63 @@ is_hexadecimal_digit(char character)
 }
 
 static void
+generate_session_id(char *destination, size_t size)
+{
+   assert(size == 64);
+
+   unsigned char message[4096];
+   get_random_bytes(message, sizeof(message));
+
+   SHA256 hash = hash_sha256(message, sizeof(message));
+   memory_copy(destination, hash.text, size);
+}
+
+#define SESSION_COOKIE_KEY "bsp_session_id"
+
+static void
+clear_session(Request_State *request)
+{
+   memory_set(request->session_id, sizeof(request->session_id), 0);
+
+   OUT("Content-type: text/html\n");
+#if DEVELOPMENT_BUILD
+   OUT("Set-Cookie: " SESSION_COOKIE_KEY "=; SameSite=Strict; HttpOnly\n");
+#else
+   OUT("Set-Cookie: " SESSION_COOKIE_KEY "=; SameSite=Strict; Secure; HttpOnly\n");
+#endif
+
+   OUT("Status: 303\n");
+   OUT("Location: /\n");
+   OUT("\n");
+}
+
+static void
+create_session(Request_State *request)
+{
+   char session_id[sizeof(request->session_id)] = {0};
+   generate_session_id(session_id, sizeof(request->session_id) - 1);
+
+   memory_copy(request->session_id, session_id, sizeof(request->session_id));
+
+   OUT("Content-type: text/html\n");
+#if DEVELOPMENT_BUILD
+   OUT("Set-Cookie: " SESSION_COOKIE_KEY "=%s; SameSite=Strict; HttpOnly\n", session_id);
+#else
+   OUT("Set-Cookie: " SESSION_COOKIE_KEY "=%s; SameSite=Strict; Secure; HttpOnly\n", session_id);
+#endif
+
+   OUT("Status: 303\n");
+
+   // TODO(law): Should updating the session cookie redirect back to the
+   // referer? Or to a specific page?
+
+   // OUT("Location: %s\n", request->HTTP_REFERER);
+
+   OUT("Location: /\n");
+   OUT("\n");
+}
+
+static void
 decode_query_string(char *destination, char *source, size_t size)
 {
    while(*source && size-- > 1)
@@ -366,11 +423,12 @@ initialize_request(Request_State *request)
       }
    }
 
-   char *session_id = get_value(cookies, "bsp_session_id");
-   if(session_id)
+   char *session_id = get_value(cookies, SESSION_COOKIE_KEY);
+   if(session_id && *session_id)
    {
       // TODO(law): Check for valid existing session that matches the id
       // provided by the client.
+      memory_copy(request->session_id, session_id, sizeof(request->session_id));
    }
 
    // Update request data with URL parameters from query string.
@@ -748,8 +806,7 @@ login_user(Request_State *request, char *username, char *password)
       return;
    }
 
-   // TODO(law): Store session information and generate session cookie.
-   redirect_request(request, "/?login=success");
+   create_session(request);
 }
 
 static void
@@ -778,8 +835,8 @@ register_user(Request_State *request, char *username, char *password)
       return;
    }
 
-   User_Account user = get_user(username);
-   if(*user.username)
+   User_Account existing_user = get_user(username);
+   if(*existing_user.username)
    {
       // "That username already exists."
       redirect_request(request, "/?error=user-exists");
@@ -788,10 +845,10 @@ register_user(Request_State *request, char *username, char *password)
 
    // NOTE(law): Generate the random bytes that will act as the user's salt
    // value for producing their password hash.
-   unsigned char salt[sizeof(user.salt)];
+   unsigned char salt[sizeof(existing_user.salt)];
    get_random_bytes(salt, sizeof(salt));
 
-   unsigned char password_hash[sizeof(user.password_hash)];
+   unsigned char password_hash[sizeof(existing_user.password_hash)];
 
    pbkdf2_hmac_sha256(password_hash,
                       sizeof(password_hash),
@@ -802,8 +859,26 @@ register_user(Request_State *request, char *username, char *password)
                       PBKDF2_PASSWORD_ITERATION_ACCOUNT);
 
    // TODO(law): Add new user to user database.
-   // TODO(law): Login user to new account
-   redirect_request(request, "/?login=success");
+
+   // TODO(law): Log in newly added user.
+   // login_user(request, username, password);
+
+   redirect_request(request, "/?error=registration-not-implemented");
+   return;
+}
+
+static bool
+is_logged_in(Request_State *request)
+{
+   bool result = false;
+
+   char *session_id = get_value(&request->cookies, SESSION_COOKIE_KEY);
+   if(session_id && *session_id && strings_are_equal(request->session_id, session_id))
+   {
+      result = true;
+   }
+
+   return result;
 }
 
 static void
@@ -815,8 +890,8 @@ process_request(Request_State *request)
                request->thread_id);
 
    Memory_Arena *arena = &request->arena;
-   Key_Value_Table *form = &request->form;
    Key_Value_Table *url = &request->url;
+   Key_Value_Table *form = &request->form;
 
    if(strings_are_equal(request->SCRIPT_NAME, "/"))
    {
@@ -855,7 +930,7 @@ process_request(Request_State *request)
             OUT("<p class=\"warning\">%s</p>", encode_for_html(arena, error));
          }
 
-         if(get_value(url, "login"))
+         if(is_logged_in(request))
          {
             OUT("<p class=\"success\">You are logged in!</p>");
          }
@@ -866,6 +941,10 @@ process_request(Request_State *request)
 
          OUTPUT_HTML_TEMPLATE("footer.html");
       }
+   }
+   else if(strings_are_equal(request->SCRIPT_NAME, "/logout"))
+   {
+      clear_session(request);
    }
    else
    {
