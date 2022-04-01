@@ -13,6 +13,16 @@
 #define STRINGIFY_(x) #x
 #define STRINGIFY(x) STRINGIFY_(x)
 
+#define ASSERT(expression)                                              \
+   do                                                                   \
+   {                                                                    \
+      if(!(expression))                                                 \
+      {                                                                 \
+         log_message("Assertion fired on %s:%d", __FILE__, __LINE__);   \
+         assert(expression);                                            \
+      }                                                                 \
+   } while(0)
+
 #define KILOBYTES(v) (1000LL * (v))
 #define MEGABYTES(v) (1000LL * KILOBYTES(v))
 #define GIGABYTES(v) (1000LL * MEGABYTES(v))

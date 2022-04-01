@@ -44,7 +44,7 @@ import_users_from_database(User_Account_Table *table)
             ++scan;
          }
          size_t salt_start_length = 2 * sizeof(user.salt);
-         assert((scan - salt_start) == salt_start_length);
+         ASSERT((scan - salt_start) == salt_start_length);
 
          hexadecimal_string_to_bytes((unsigned char *)user.salt,
                                      sizeof(user.salt),
@@ -61,7 +61,7 @@ import_users_from_database(User_Account_Table *table)
             ++scan;
          }
          size_t hash_start_length = 2 * sizeof(user.password_hash);
-         assert((scan - hash_start) == hash_start_length);
+         ASSERT((scan - hash_start) == hash_start_length);
 
          hexadecimal_string_to_bytes((unsigned char *)user.password_hash,
                                      sizeof(user.password_hash),
@@ -78,7 +78,7 @@ import_users_from_database(User_Account_Table *table)
             ++scan;
          }
          size_t iteration_start_length = 2 * sizeof(user.iteration_count);
-         assert((scan - iteration_start) == iteration_start_length);
+         ASSERT((scan - iteration_start) == iteration_start_length);
 
          char iteration_string[2 * sizeof(user.iteration_count) + 1] = {0};
          memory_copy(iteration_string, iteration_start, iteration_start_length);
@@ -94,7 +94,7 @@ import_users_from_database(User_Account_Table *table)
          {
             ++scan;
          }
-         assert((scan - username_start) <= (ARRAY_LENGTH(user.username) - 1));
+         ASSERT((scan - username_start) <= (ARRAY_LENGTH(user.username) - 1));
          memory_copy(user.username, username_start, scan - username_start);
 
          // Skip newline
@@ -151,7 +151,7 @@ is_hexadecimal_digit(char character)
 static void
 generate_session_id(char *destination, size_t size)
 {
-   assert(size == 64);
+   ASSERT(size == 64);
 
    unsigned char message[4096];
    get_random_bytes(message, sizeof(message));
@@ -944,7 +944,7 @@ process_request(Request_State *request)
          else
          {
             // Invalid code path;
-            assert(0);
+            ASSERT(0);
          }
       }
       else

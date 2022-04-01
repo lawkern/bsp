@@ -5,8 +5,8 @@
 static uint32_t
 rotate_right_32(uint32_t value, uint32_t shift)
 {
-   assert(shift >= 0);
-   assert(shift < 32);
+   ASSERT(shift >= 0);
+   ASSERT(shift < 32);
 
    uint32_t result = value;
    if(shift > 0)
@@ -386,12 +386,12 @@ test_hash_sha256(unsigned int run_count)
          char *answer_text = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
          hash = hash_sha256(message_bytes, sizeof(message_bytes));
-         assert(bytes_are_equal(hash.bytes, answer_bytes, sizeof(hash.bytes)));
-         assert(strings_are_equal(hash.text, answer_text));
+         ASSERT(bytes_are_equal(hash.bytes, answer_bytes, sizeof(hash.bytes)));
+         ASSERT(strings_are_equal(hash.text, answer_text));
 
          hash = hash_sha256_string(message_text);
-         assert(bytes_are_equal(hash.bytes, answer_bytes, sizeof(hash.bytes)));
-         assert(strings_are_equal(hash.text, answer_text));
+         ASSERT(bytes_are_equal(hash.bytes, answer_bytes, sizeof(hash.bytes)));
+         ASSERT(strings_are_equal(hash.text, answer_text));
       }
       {
          SHA256 hash;
@@ -409,12 +409,12 @@ test_hash_sha256(unsigned int run_count)
          char *answer_text = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 
          hash = hash_sha256(message_bytes, sizeof(message_bytes));
-         assert(bytes_are_equal(hash.bytes, answer_bytes, sizeof(hash.bytes)));
-         assert(strings_are_equal(hash.text, answer_text));
+         ASSERT(bytes_are_equal(hash.bytes, answer_bytes, sizeof(hash.bytes)));
+         ASSERT(strings_are_equal(hash.text, answer_text));
 
          hash = hash_sha256_string(message_text);
-         assert(bytes_are_equal(hash.bytes, answer_bytes, sizeof(hash.bytes)));
-         assert(strings_are_equal(hash.text, answer_text));
+         ASSERT(bytes_are_equal(hash.bytes, answer_bytes, sizeof(hash.bytes)));
+         ASSERT(strings_are_equal(hash.text, answer_text));
       }
       {
          SHA256 hash;
@@ -440,12 +440,12 @@ test_hash_sha256(unsigned int run_count)
          char *answer_text = "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1";
 
          hash = hash_sha256(message_bytes, sizeof(message_bytes));
-         assert(bytes_are_equal(hash.bytes, answer_bytes, sizeof(hash.bytes)));
-         assert(strings_are_equal(hash.text, answer_text));
+         ASSERT(bytes_are_equal(hash.bytes, answer_bytes, sizeof(hash.bytes)));
+         ASSERT(strings_are_equal(hash.text, answer_text));
 
          hash = hash_sha256_string(message_text);
-         assert(bytes_are_equal(hash.bytes, answer_bytes, sizeof(hash.bytes)));
-         assert(strings_are_equal(hash.text, answer_text));
+         ASSERT(bytes_are_equal(hash.bytes, answer_bytes, sizeof(hash.bytes)));
+         ASSERT(strings_are_equal(hash.text, answer_text));
       }
       {
          SHA256 hash;
@@ -555,12 +555,12 @@ test_hash_sha256(unsigned int run_count)
          char *answer_text = "340d3d2c6c198112860d0f6ddafe51a17e95c411a11810c0152ef20808dd0e42";
 
          hash = hash_sha256(message_bytes, sizeof(message_bytes));
-         assert(bytes_are_equal(hash.bytes, answer_bytes, sizeof(hash.bytes)));
-         assert(strings_are_equal(hash.text, answer_text));
+         ASSERT(bytes_are_equal(hash.bytes, answer_bytes, sizeof(hash.bytes)));
+         ASSERT(strings_are_equal(hash.text, answer_text));
 
          hash = hash_sha256_string(message_text);
-         assert(bytes_are_equal(hash.bytes, answer_bytes, sizeof(hash.bytes)));
-         assert(strings_are_equal(hash.text, answer_text));
+         ASSERT(bytes_are_equal(hash.bytes, answer_bytes, sizeof(hash.bytes)));
+         ASSERT(strings_are_equal(hash.text, answer_text));
 
       }
    }
@@ -568,8 +568,8 @@ test_hash_sha256(unsigned int run_count)
 
 #define TEST_HMAC_SHA256()                                                    \
    SHA256 hash = hmac_sha256(key, sizeof(key), message, sizeof(message));     \
-   assert(bytes_are_equal(hash.bytes, correct_bytes, sizeof(correct_bytes))); \
-   assert(bytes_are_equal(hash.text, correct_text, string_length(correct_text)))
+   ASSERT(bytes_are_equal(hash.bytes, correct_bytes, sizeof(correct_bytes))); \
+   ASSERT(bytes_are_equal(hash.text, correct_text, string_length(correct_text)))
 
 static void
 test_hmac_sha256(unsigned int run_count)
@@ -829,7 +829,7 @@ test_pbkdf2_hmac_sha256(unsigned int run_count)
          };
 
          pbkdf2_hmac_sha256(key, sizeof(key), password, sizeof(password), salt, sizeof(salt), 1);
-         assert(bytes_are_equal(key, answer1, sizeof(key)));
+         ASSERT(bytes_are_equal(key, answer1, sizeof(key)));
 
          unsigned char answer2[] =
          {
@@ -840,7 +840,7 @@ test_pbkdf2_hmac_sha256(unsigned int run_count)
          };
 
          pbkdf2_hmac_sha256(key, sizeof(key), password, sizeof(password), salt, sizeof(salt), 2);
-         assert(bytes_are_equal(key, answer2, sizeof(key)));
+         ASSERT(bytes_are_equal(key, answer2, sizeof(key)));
 
          unsigned char answer3[] =
          {
@@ -851,7 +851,7 @@ test_pbkdf2_hmac_sha256(unsigned int run_count)
          };
 
          pbkdf2_hmac_sha256(key, sizeof(key), password, sizeof(password), salt, sizeof(salt), 4096);
-         assert(bytes_are_equal(key, answer3, sizeof(key)));
+         ASSERT(bytes_are_equal(key, answer3, sizeof(key)));
       }
       {
          unsigned char key[40];
@@ -878,7 +878,7 @@ test_pbkdf2_hmac_sha256(unsigned int run_count)
          };
 
          pbkdf2_hmac_sha256(key, sizeof(key), password, sizeof(password), salt, sizeof(salt), 4096);
-         assert(bytes_are_equal(key, answer, sizeof(key)));
+         ASSERT(bytes_are_equal(key, answer, sizeof(key)));
       }
       {
          unsigned char key[16];
@@ -891,7 +891,7 @@ test_pbkdf2_hmac_sha256(unsigned int run_count)
          };
 
          pbkdf2_hmac_sha256(key, sizeof(key), password, sizeof(password), salt, sizeof(salt), 4096);
-         assert(bytes_are_equal(key, answer, sizeof(key)));
+         ASSERT(bytes_are_equal(key, answer, sizeof(key)));
       }
    }
 }

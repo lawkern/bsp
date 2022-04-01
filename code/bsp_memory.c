@@ -112,8 +112,8 @@ static void
 hexadecimal_string_to_bytes(unsigned char *destination, size_t destination_size,
                             char *source, size_t source_size)
 {
-   assert((source_size & 1) == 0);
-   assert((2 * destination_size) >= source_size);
+   ASSERT((source_size & 1) == 0);
+   ASSERT((2 * destination_size) >= source_size);
 
    while(source_size > 0)
    {
