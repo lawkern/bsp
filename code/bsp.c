@@ -925,8 +925,8 @@ process_request(Request_State *request)
          }
          else
          {
-            // Invalid code path;
-            ASSERT(0);
+            // Unhandled POST request
+            redirect_request(request, "/");
          }
       }
       else
