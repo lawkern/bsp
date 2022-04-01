@@ -402,7 +402,9 @@ static void
 initialize_request(Request_State *request)
 {
    // Update request data with CGI metavariables from host environment.
-#define X(v) request->v = GET_ENVIRONMENT_PARAMETER(#v);
+#define X(v) request->v = GET_ENVIRONMENT_PARAMETER(#v);  \
+   if(!request->v) request->v = "";
+
    CGI_METAVARIABLES_LIST
 #undef X
 
@@ -610,7 +612,7 @@ output_html_template(Request_State *request, char *path)
    {
       log_message("[WARNING] HTML template \"%s\" could not be found.", path);
 #if DEVELOPMENT_BUILD
-      OUT("<p>MISSING TEMPLATE: %s</p>", path);
+      OUT("<p class=\"warning\">MISSING TEMPLATE: %s</p>", path);
 #endif
    }
 }
@@ -733,8 +735,7 @@ debug_output_request_data(Request_State *request)
    OUT("<table>");
    OUT("<tr><th>CGI Metavariable</th><th>Value</th></tr>");
 
-#define X(v) OUT("<tr><td>" #v "</td><td>%s</td></tr>",                 \
-                 (request->v) ? encode_for_html(arena, request->v) : "");
+#define X(v) OUT("<tr><td>" #v "</td><td>%s</td></tr>", encode_for_html(arena, request->v));
    CGI_METAVARIABLES_LIST
 #undef X
 
