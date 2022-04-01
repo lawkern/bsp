@@ -15,11 +15,14 @@ import_users_from_database(User_Account_Table *table)
    // NOTE(law): User entries are stored in a flat file with the following
    // format:
    //
-   //   <salt><TAB><password_hash><TAB><username><NEWLINE>
+   //   <salt><TAB><password_hash><TAB><iteration_count><TAB><username><NEWLINE>
    //
    // <salt> is 32 hexadecimal characters representing a 128-bit
    // integer. <password_hash> is 64 hexadecimal characters representing a
-   // 256-bit integer. <username> is a string of up to 32 characters.
+   // 256-bit integer. <iteration_count> is eight hexadecimal characters
+   // representing the 32-bit iteration count that is passed to the PBKDF2
+   // function for generating the password hash. <username> is a string of up to
+   // 32 8-bit characters.
 
    // TODO(law): This structure is mainly for development purposes. I'd like to
    // get away without needing a database indefinitely, but at the very least
@@ -64,6 +67,23 @@ import_users_from_database(User_Account_Table *table)
                                      sizeof(user.password_hash),
                                      hash_start,
                                      hash_start_length);
+
+         // Skip tab
+         ++scan;
+
+         // Consume iteration count
+         char *iteration_start = scan;
+         while(*scan && *scan != '\t')
+         {
+            ++scan;
+         }
+         size_t iteration_start_length = 2 * sizeof(user.iteration_count);
+         assert((scan - iteration_start) == iteration_start_length);
+
+         char iteration_string[2 * sizeof(user.iteration_count) + 1] = {0};
+         memory_copy(iteration_string, iteration_start, iteration_start_length);
+
+         user.iteration_count = string_to_integer_hexadecimal(iteration_string);
 
          // Skip tab
          ++scan;
@@ -715,7 +735,13 @@ debug_output_request_data(Request_State *request)
 
    // Output user accounts
    OUT("<table>");
-   OUT("<tr><th>Username</th><th>Salt</th><th>Password Hash</th></tr>");
+   OUT("<tr>");
+   OUT("<th>Username</th>");
+   OUT("<th>Salt</th>");
+   OUT("<th>Password Hash</th>");
+   OUT("<th>Iteration Count</th>");
+   OUT("</tr>");
+
    for(unsigned int index = 0; index < global_user_account_table.count; ++index)
    {
       User_Account *user = global_user_account_table.users + index;
@@ -727,6 +753,7 @@ debug_output_request_data(Request_State *request)
       OUT("<td>");
       print_bytes(request, user->password_hash, 32);
       OUT("</td>");
+      OUT("<td>%d</td>", user->iteration_count);
       OUT("</tr>");
    }
    OUT("</table>");
@@ -762,8 +789,6 @@ redirect_request(Request_State *request, char *path)
    OUT("\n");
 }
 
-#define PBKDF2_PASSWORD_ITERATION_ACCOUNT 100000
-
 static void
 login_user(Request_State *request, char *username, char *password)
 {
@@ -798,7 +823,7 @@ login_user(Request_State *request, char *username, char *password)
                       password_size,
                       user.salt,
                       sizeof(user.salt),
-                      PBKDF2_PASSWORD_ITERATION_ACCOUNT);
+                      user.iteration_count);
 
    if(!bytes_are_equal(password_hash, user.password_hash, sizeof(user.password_hash)))
    {
@@ -809,6 +834,8 @@ login_user(Request_State *request, char *username, char *password)
 
    create_session(request);
 }
+
+#define PBKDF2_PASSWORD_ITERATION_ACCOUNT 100000
 
 static void
 register_user(Request_State *request, char *username, char *password)

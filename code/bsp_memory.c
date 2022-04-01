@@ -29,6 +29,14 @@ string_to_integer_decimal(char *string)
    return result;
 }
 
+static long
+string_to_integer_hexadecimal(char *string)
+{
+   // TODO(law): Remove dependency on stdlib.h.
+   long result = strtol(string, 0, 16);
+   return result;
+}
+
 static bool
 is_whitespace(char c)
 {

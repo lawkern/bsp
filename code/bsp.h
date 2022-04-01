@@ -94,6 +94,7 @@ typedef struct
    char username[MAX_USERNAME_LENGTH + 1]; // includes null terminator
    unsigned char salt[16];
    unsigned char password_hash[32]; // Width of SHA256 output
+   unsigned int iteration_count;
 } User_Account;
 
 typedef struct
