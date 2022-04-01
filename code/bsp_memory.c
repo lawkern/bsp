@@ -3,26 +3,69 @@
 /* /////////////////////////////////////////////////////////////////////////// */
 
 #include <stdlib.h>
-#include <string.h>
+
+// TODO(law): All of the hand-written memory/string operations in this file are
+// intentionally written in a very straightforward, unoptimized way. They will
+// eventually require an optimization pass as they actually introduce
+// bottlenecks in practice.
 
 static size_t
 string_length(char *string)
 {
-   // TODO(law): Remove dependency on string.h.
-   size_t result = strlen(string);
+   size_t result = 0;
+
+   while(*string++)
+   {
+      result++;
+   }
+
+   return result;
+}
+
+static bool
+bytes_are_equal(void *a, void *b, size_t size)
+{
+   bool result = true;
+
+   unsigned char *a_bytes = (unsigned char *)a;
+   unsigned char *b_bytes = (unsigned char *)b;
+
+   for(size_t index = 0; index < size; ++index)
+   {
+      if(a_bytes[index] != b_bytes[index])
+      {
+         result = false;
+         break;
+      }
+   }
+
    return result;
 }
 
 static bool
 strings_are_equal(char *a, char *b)
 {
-   // TODO(law): Remove dependency on string.h.
-   bool result = (strcmp(a, b) == 0);
+   if(!a || !b)
+   {
+      // NOTE(law): The convention here is that a null pointer is not actually a
+      // string, and therefore they cannot be equal "strings" if either is 0.
+      return false;
+   }
+
+   size_t length_a = string_length(a);
+   size_t length_b = string_length(b);
+
+   if(length_a != length_b)
+   {
+      return false;
+   }
+
+   bool result = bytes_are_equal(a, b, length_a);
    return result;
 }
 
 static long
-string_to_integer_decimal(char *string)
+decimal_string_to_integer(char *string)
 {
    // TODO(law): Remove dependency on stdlib.h.
    long result = strtol(string, 0, 10);
@@ -30,7 +73,7 @@ string_to_integer_decimal(char *string)
 }
 
 static long
-string_to_integer_hexadecimal(char *string)
+hexadecimal_string_to_integer(char *string)
 {
    // TODO(law): Remove dependency on stdlib.h.
    long result = strtol(string, 0, 16);
@@ -46,6 +89,24 @@ is_whitespace(char c)
                   c == '\f' ||
                   c == '\v' ||
                   c == '\r');
+
+   return result;
+}
+
+static bool
+is_hexadecimal_digit(char character)
+{
+   bool result = (character == '0' || character == '1' ||
+                  character == '2' || character == '3' ||
+                  character == '4' || character == '5' ||
+                  character == '6' || character == '7' ||
+                  character == '8' || character == '9' ||
+                  character == 'A' || character == 'a' ||
+                  character == 'B' || character == 'b' ||
+                  character == 'C' || character == 'c' ||
+                  character == 'D' || character == 'd' ||
+                  character == 'E' || character == 'e' ||
+                  character == 'F' || character == 'f');
 
    return result;
 }
@@ -78,24 +139,33 @@ format_string(char *destination, size_t size, char *format, ...)
 }
 
 static void
-zero_memory(void *destination, size_t size)
-{
-   // TODO(law): Remove dependency on string.h.
-   memset(destination, 0, size);
-}
-
-static void
 memory_copy(void *destination, void *source, size_t size)
 {
-   // TODO(law): Remove dependency on string.h.
-   memcpy(destination, source, size);
+   // TODO(law): Speed up with SIMD.
+   unsigned char *destination_bytes = destination;
+   unsigned char *source_bytes = source;
+
+   for(size_t index = 0; index < size; ++index)
+   {
+      *destination_bytes++ = *source_bytes++;
+   }
 }
 
 static void
 memory_set(void *destination, size_t size, unsigned char value)
 {
-   // TODO(law): Remove dependency on string.h.
-   memset(destination, value, size);
+   // TODO(law): Speed up with SIMD.
+   unsigned char *bytes = destination;
+   for(size_t index = 0; index < size; ++index)
+   {
+      *bytes++ = value;
+   }
+}
+
+static void
+zero_memory(void *destination, size_t size)
+{
+   memory_set(destination, size, 0);
 }
 
 static void
@@ -122,33 +192,11 @@ hexadecimal_string_to_bytes(unsigned char *destination, size_t destination_size,
       hex_byte_string[1] = *source++;
       hex_byte_string[2] = 0;
 
-      // TODO(law): Remove dependency on stdlib.h.
-      *destination++ = strtol(hex_byte_string, 0, 16);
+      *destination++ = hexadecimal_string_to_integer(hex_byte_string);
 
       destination_size -= 1;
       source_size      -= 2;
    }
-}
-
-static bool
-bytes_are_equal(void *a, void *b, size_t size)
-{
-   // TODO(law): Remove dependency on string.h.
-   bool result = true;
-
-   unsigned char *a_bytes = (unsigned char *)a;
-   unsigned char *b_bytes = (unsigned char *)b;
-
-   for(size_t index = 0; index < size; ++index)
-   {
-      if(a_bytes[index] != b_bytes[index])
-      {
-         result = false;
-         break;
-      }
-   }
-
-   return result;
 }
 
 static void

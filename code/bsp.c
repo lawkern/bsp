@@ -83,7 +83,7 @@ import_users_from_database(User_Account_Table *table)
          char iteration_string[2 * sizeof(user.iteration_count) + 1] = {0};
          memory_copy(iteration_string, iteration_start, iteration_start_length);
 
-         user.iteration_count = string_to_integer_hexadecimal(iteration_string);
+         user.iteration_count = hexadecimal_string_to_integer(iteration_string);
 
          // Skip tab
          ++scan;
@@ -126,24 +126,6 @@ get_user(char *username)
          break;
       }
    }
-
-   return result;
-}
-
-static bool
-is_hexadecimal_digit(char character)
-{
-   bool result = (character == '0' || character == '1' ||
-                  character == '2' || character == '3' ||
-                  character == '4' || character == '5' ||
-                  character == '6' || character == '7' ||
-                  character == '8' || character == '9' ||
-                  character == 'A' || character == 'a' ||
-                  character == 'B' || character == 'b' ||
-                  character == 'C' || character == 'c' ||
-                  character == 'D' || character == 'd' ||
-                  character == 'E' || character == 'e' ||
-                  character == 'F' || character == 'f');
 
    return result;
 }
@@ -479,7 +461,7 @@ initialize_request(Request_State *request)
    // Update request data with form parameters from POST request.
    if(strings_are_equal(request->REQUEST_METHOD, "POST") && request->CONTENT_LENGTH)
    {
-      size_t content_length = string_to_integer_decimal(request->CONTENT_LENGTH);
+      size_t content_length = decimal_string_to_integer(request->CONTENT_LENGTH);
       char *post_data = PUSH_SIZE(arena, content_length + 1);
       if(post_data)
       {

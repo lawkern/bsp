@@ -35,13 +35,19 @@ header h1 a {color: #eee; text-decoration: none;}
 table {border-collapse: collapse;}
 th, td {padding: 0.2em; border: 1px solid dimgray;}
 
-.success {color: #98e084; text-align: center;}
-.warning {color: #e36959; text-align: center;}
+.success, .warning
+{
+  max-width: 500px;
+  text-align: center;
+  border-radius: 0.2rem;
+  padding: 0.5rem;
+  margin: 1.5rem auto;
+}
+.success {background: #98e08411; color: #98e084; border:1px solid #98e084aa;}
+.warning {background: #e3695911; color: #e36959; border:1px solid #e36959aa;}
 
 /* Debug Information */
 section#debug-information {padding: 0 1em; border-top: 1px solid #444; background: #181818;}
 section#debug-information table {font-family: monospace; min-width:250px; margin: 1em;}
 section#debug-information caption {text-align: left; font-weight: bold;}
 section#debug-information th {background: #444;}
-section#debug-information .undefined {opacity:0.5; color:red;}
-section#debug-information .null {opacity:0.25;}
