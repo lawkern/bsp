@@ -115,12 +115,23 @@ typedef struct
 
 typedef struct
 {
+   // TODO(law): Add any thread-related information that should persist beyond
+   // the lifetime of a single request here.
+
+   unsigned int index;
+   Memory_Arena arena;
+} Thread_Context;
+
+#define SESSION_ID_LENGTH 64
+
+typedef struct
+{
    // NOTE(law): The contents of Request_State is intended to persist for the
    // lifetime of a single request made by a single user.
 
-   Memory_Arena arena;
-   long thread_id;
-   char session_id[65]; // Include null terminator
+   Thread_Context thread;
+
+   char session_id[SESSION_ID_LENGTH + 1]; // Include null terminator
 
 #define X(v) char *(v);
    CGI_METAVARIABLES_LIST

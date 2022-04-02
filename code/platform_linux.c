@@ -153,29 +153,27 @@ accept_request(FCGX_Request *fcgx)
 static void *
 launch_request_thread(void *data)
 {
-   long thread_id = (long)data;
-   log_message("Request thread %ld launched.", thread_id);
+   Thread_Context thread = *(Thread_Context *)data;
 
-   Memory_Arena arena;
-   size_t size = MEBIBYTES(512);
-   unsigned char *base_address = allocate(size);
+   log_message("Request thread %d launched.", thread.index);
+
+   size_t arena_size = MEBIBYTES(512);
+   unsigned char *base_address = allocate(arena_size);
 
    FCGX_Request fcgx;
    FCGX_InitRequest(&fcgx, 0, 0);
 
    while(accept_request(&fcgx))
    {
-      initialize_arena(&arena, base_address, size);
+      initialize_arena(&thread.arena, base_address, arena_size);
 
       Linux_Request_State linux_request_ = {0};
       Linux_Request_State *linux_request = &linux_request_;
       linux_request->fcgx = fcgx;
 
       Request_State *request = (Request_State *)linux_request;
-      request->arena = arena;
-      request->thread_id = thread_id;
+      request->thread = thread;
 
-      initialize_request(request);
       process_request(request);
 
       FCGX_Finish_r(&fcgx);
@@ -183,7 +181,7 @@ launch_request_thread(void *data)
 
    deallocate(base_address);
 
-   log_message("Request thread %ld terminated.", thread_id);
+   log_message("Request thread %d terminated.", thread.index);
 
    return 0;
 }
@@ -202,14 +200,18 @@ main(int argument_count, char **arguments)
 
    FCGX_Init();
 
-   pthread_t threads[REQUEST_THREAD_COUNT];
+   Thread_Context threads[REQUEST_THREAD_COUNT] = {0};
    for(long index = 1; index < ARRAY_LENGTH(threads); ++index)
    {
-      pthread_t *thread = threads + index;
-      pthread_create(thread, 0, launch_request_thread, (void *)index);
+      Thread_Context *thread = threads + index;
+      thread->index = index;
+
+      pthread_t id;
+      pthread_create(&id, 0, launch_request_thread, (void *)thread);
+      pthread_detach(id);
    }
 
-   launch_request_thread(0);
+   launch_request_thread(threads + 0);
 
    return 0;
 }

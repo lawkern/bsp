@@ -142,12 +142,12 @@ generate_session_id(char *destination, size_t size)
    memory_copy(destination, hash.text, size);
 }
 
-#define SESSION_COOKIE_KEY "bsp_session_id"
+#define SESSION_COOKIE_KEY "id"
 
 static void
 clear_session(Request_State *request)
 {
-   memory_set(request->session_id, sizeof(request->session_id), 0);
+   memory_set(request->session_id, SESSION_ID_LENGTH, 0);
 
    OUT("Content-type: text/html\n");
 #if DEVELOPMENT_BUILD
@@ -164,10 +164,10 @@ clear_session(Request_State *request)
 static void
 create_session(Request_State *request)
 {
-   char session_id[sizeof(request->session_id)] = {0};
-   generate_session_id(session_id, sizeof(request->session_id) - 1);
+   char session_id[SESSION_ID_LENGTH + 1] = {0};
+   generate_session_id(session_id, SESSION_ID_LENGTH);
 
-   memory_copy(request->session_id, session_id, sizeof(request->session_id));
+   memory_copy(request->session_id, session_id, SESSION_ID_LENGTH);
 
    OUT("Content-type: text/html\n");
 #if DEVELOPMENT_BUILD
@@ -410,7 +410,7 @@ initialize_request(Request_State *request)
    CGI_METAVARIABLES_LIST
 #undef X
 
-   Memory_Arena *arena = &request->arena;
+   Memory_Arena *arena = &request->thread.arena;
 
    Key_Value_Table *url = &request->url;
    Key_Value_Table *form = &request->form;
@@ -432,7 +432,7 @@ initialize_request(Request_State *request)
    {
       // TODO(law): Check for valid existing session that matches the id
       // provided by the client.
-      memory_copy(request->session_id, session_id, sizeof(request->session_id));
+      memory_copy(request->session_id, session_id, SESSION_ID_LENGTH);
    }
 
    // Update request data with URL parameters from query string.
@@ -514,7 +514,7 @@ initialize_application()
       // TODO(law): New templates need to be manually added to the list here (it
       // doesn't just scan the html directory).
 
-      "html/header.html",
+      "html/head.html",
       "html/footer.html",
       "html/authentication-form.html",
       "html/404.html",
@@ -623,7 +623,15 @@ static void
 debug_output_request_data(Request_State *request)
 {
 #if DEVELOPMENT_BUILD
-   Memory_Arena *arena = &request->arena;
+   OUT("<style>"
+       "/* Debug Information */"
+       "section#debug-information {padding: 0 1em; border-top: 1px solid #444; background: #181818;}"
+       "section#debug-information table {font-family: monospace; min-width:250px; margin: 1em;}"
+       "section#debug-information caption {text-align: left; font-weight: bold;}"
+       "section#debug-information th {background: #444;}"
+       "</style>");
+
+   Memory_Arena *arena = &request->thread.arena;
    Key_Value_Table *url = &request->url;
    Key_Value_Table *form = &request->form;
    Key_Value_Table *cookies = &request->cookies;
@@ -709,8 +717,8 @@ debug_output_request_data(Request_State *request)
    }
 
    OUT("<table>");
-   OUT("<tr><th colspan=\"2\">Memory Arena</th></tr>", request->thread_id);
-   OUT("<tr><td>Thread ID</td><td>%ld</td></tr>", request->thread_id);
+   OUT("<tr><th colspan=\"2\">Memory Arena</th></tr>");
+   OUT("<tr><td>Thread</td><td>%ld</td></tr>", request->thread.index);
    OUT("<tr><td>Arena Size</td><td>%0.1f%s</td></tr>", arena_size, units_size);
    OUT("<tr><td>Arena Used</td><td>%0.1f%s</td></tr>", arena_used, units_used);
    OUT("</table>");
@@ -892,16 +900,37 @@ is_logged_in(Request_State *request)
 }
 
 static void
+output_html_header(Request_State *request, bool logged_in)
+{
+   // TODO(law): Replace with some form of HTML templating.
+
+   OUTPUT_HTML_TEMPLATE("head.html");
+   OUT("<header>");
+
+   OUT("   <strong><a href=\"/\">Big Shitty Platform</a></strong>");
+   if(logged_in)
+   {
+      OUT("   <a href=\"/logout\">Logout</a>");
+   }
+
+   OUT("</header>");
+}
+
+static void
 process_request(Request_State *request)
 {
    log_message("%s request to \"%s\" received by thread %ld.",
                request->REQUEST_METHOD,
                request->SCRIPT_NAME,
-               request->thread_id);
+               request->thread.index);
 
-   Memory_Arena *arena = &request->arena;
+   initialize_request(request);
+
+   Memory_Arena *arena = &request->thread.arena;
    Key_Value_Table *url = &request->url;
    Key_Value_Table *form = &request->form;
+
+   bool logged_in = is_logged_in(request);
 
    if(strings_are_equal(request->SCRIPT_NAME, "/"))
    {
@@ -932,7 +961,7 @@ process_request(Request_State *request)
       else
       {
          output_request_header(request, 200);
-         OUTPUT_HTML_TEMPLATE("header.html");
+         output_html_header(request, logged_in);
 
          char *error = get_value(url, "error");
          if(error)
@@ -940,7 +969,7 @@ process_request(Request_State *request)
             OUT("<p class=\"warning\">%s</p>", encode_for_html(arena, error));
          }
 
-         if(is_logged_in(request))
+         if(logged_in)
          {
             OUT("<p class=\"success\">You are logged in!</p>");
          }
@@ -959,7 +988,7 @@ process_request(Request_State *request)
    else
    {
       output_request_header(request, 404);
-      OUTPUT_HTML_TEMPLATE("header.html");
+      output_html_header(request, logged_in);
       OUTPUT_HTML_TEMPLATE("404.html");
       OUTPUT_HTML_TEMPLATE("footer.html");
    }
