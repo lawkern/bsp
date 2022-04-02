@@ -8,7 +8,7 @@
 static
 PLATFORM_LOG_MESSAGE(log_message)
 {
-   char *log_path = "../data/bsp.log";
+   char *file_path = "logs/bsp.log";
 
    time_t raw_time = time(0);
    struct tm time;
@@ -28,11 +28,15 @@ PLATFORM_LOG_MESSAGE(log_message)
    char log[ARRAY_LENGTH(timestamp) + ARRAY_LENGTH(message) + 1];
    format_string(log, ARRAY_LENGTH(log), "%s%s\n", timestamp, message);
 
-   int file = open(log_path, O_CREAT|O_WRONLY|O_APPEND, 0666);
+   int file = open(file_path, O_CREAT|O_WRONLY|O_APPEND, 0666);
    if(file >= 0)
    {
       write(file, log, string_length(log));
       close(file);
+   }
+   else
+   {
+      assert(0);
    }
 }
 
