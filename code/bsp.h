@@ -48,6 +48,21 @@ static PLATFORM_READ_FILE(read_file);
 #define PLATFORM_GET_RANDOM_BYTES(name) void name(void *destination, size_t size)
 static PLATFORM_GET_RANDOM_BYTES(get_random_bytes);
 
+typedef struct
+{
+   volatile unsigned int count;
+   sem_t handle;
+} Platform_Semaphore;
+
+#define PLATFORM_INITIALIZE_SEMAPHORE(name) void name(Platform_Semaphore *semaphore)
+static PLATFORM_INITIALIZE_SEMAPHORE(initialize_semaphore);
+
+#define PLATFORM_LOCK(name) void name(Platform_Semaphore *semaphore)
+static PLATFORM_LOCK(lock);
+
+#define PLATFORM_UNLOCK(name) void name(Platform_Semaphore *semaphore)
+static PLATFORM_UNLOCK(unlock);
+
 #define CGI_METAVARIABLES_LIST                  \
    X(AUTH_TYPE)                                 \
    X(CONTENT_LENGTH)                            \
@@ -109,8 +124,10 @@ typedef struct
 
 typedef struct
 {
+   Platform_Semaphore semaphore;
+
    unsigned int count;
-   User_Account users[1024];
+   User_Account users[2 * 1024 * 1024];
 } User_Account_Table;
 
 typedef struct

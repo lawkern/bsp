@@ -10,6 +10,7 @@
 
 #include <fcntl.h>
 #include <pthread.h>
+#include <semaphore.h>
 #include <sys/mman.h>
 #include <sys/random.h>
 #include <sys/stat.h>

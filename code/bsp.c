@@ -111,12 +111,49 @@ import_users_from_database(User_Account_Table *table)
    }
 }
 
+static void
+insert_user(char *username,
+            unsigned char *salt,
+            unsigned char *password_hash,
+            unsigned int iteration_count)
+{
+   // TODO(law): Persist changes to disc. Until then new users will only exist
+   // until the program is restarted.
+
+   // TODO(law): Taking a lock around the entire insertion process for all
+   // interactions with the user table is overkill. Determine the best way to
+   // handle multiple readers/writers here.
+
+   // TODO(law): Restructure this to use a hash table.
+
+   lock(&global_user_account_table.semaphore);
+
+   if(global_user_account_table.count < ARRAY_LENGTH(global_user_account_table.users))
+   {
+      User_Account *account = global_user_account_table.users + global_user_account_table.count++;
+
+      memory_copy(account->username, username, sizeof(account->username));
+      memory_copy(account->salt, salt, sizeof(account->salt));
+      memory_copy(account->password_hash, password_hash, sizeof(account->password_hash));
+      account->iteration_count = iteration_count;
+   }
+
+   unlock(&global_user_account_table.semaphore);
+}
+
 static User_Account
 get_user(char *username)
 {
+   // TODO(law): Taking a lock around the entire lookup process for all
+   // interactions with the user table is overkill. Determine the best way to
+   // handle multiple readers/writers here.
+
    // TODO(law): Restructure this to use a hash lookup on the user name.
 
    User_Account result = {0};
+
+   lock(&global_user_account_table.semaphore);
+
    for(unsigned int index = 0; index < global_user_account_table.count; ++index)
    {
       User_Account account = global_user_account_table.users[index];
@@ -126,6 +163,8 @@ get_user(char *username)
          break;
       }
    }
+
+   unlock(&global_user_account_table.semaphore);
 
    return result;
 }
@@ -340,32 +379,27 @@ static void
 insert_key_value(Key_Value_Table *table, char *key, char *value)
 {
    // TODO(law): Resizable table?
-   unsigned int max_hash_count = ARRAY_LENGTH(table->entries);
-   if(table->count < max_hash_count)
+   if(table->count >= ARRAY_LENGTH(table->entries))
    {
-      table->count++;
+      log_message("[WARNING] Failed to insert key/value - table was full.");
+      return;
+   }
 
-      unsigned long hash_value = hash_key_string(key);
-      unsigned int hash_index = hash_value % max_hash_count;
+   for(unsigned int hash_index = hash_key_string(key); ; ++hash_index)
+   {
+      hash_index %= ARRAY_LENGTH(table->entries);
 
       Key_Value_Pair *entry = table->entries + hash_index;
-      while(entry->key)
+      if(!strings_are_equal(key, entry->key) && entry->key)
       {
-         hash_index++;
-         if(hash_index >= max_hash_count)
-         {
-            hash_index = 0;
-         }
-
-         entry = table->entries + hash_index;
+         continue;
       }
 
       entry->key = key;
       entry->value = value;
-   }
-   else
-   {
-      log_message("[WARNING] Failed to insert key/value - table was full.");
+
+      table->count++;
+      break;
    }
 }
 
@@ -374,26 +408,19 @@ get_value(Key_Value_Table *table, char *key)
 {
    char *result = 0;
 
-   unsigned long hash_value = hash_key_string(key);
-   unsigned int hash_index = hash_value % ARRAY_LENGTH(table->entries);
-
-   Key_Value_Pair *entry = table->entries + hash_index;
-   while(entry->key)
+   for(unsigned int hash_index = hash_key_string(key); ; ++hash_index)
    {
-      if(strings_are_equal(key, entry->key))
+      hash_index %= ARRAY_LENGTH(table->entries);
+
+      Key_Value_Pair *entry = table->entries + hash_index;
+      if(!entry->key)
+      {
+         break;
+      }
+      else if(strings_are_equal(key, entry->key))
       {
          result = entry->value;
          break;
-      }
-      else
-      {
-         hash_index++;
-         if(hash_index >= ARRAY_LENGTH(table->entries))
-         {
-            hash_index = 0;
-         }
-
-         entry = table->entries + hash_index;
       }
    }
 
@@ -506,6 +533,7 @@ initialize_application()
 #endif
 
    // NOTE(law): Read user accounts into memory.
+   initialize_semaphore(&global_user_account_table.semaphore);
    import_users_from_database(&global_user_account_table);
 
    // NOTE(law): Read html tempates into memory.
@@ -876,13 +904,11 @@ register_user(Request_State *request, char *username, char *password)
                       sizeof(salt),
                       PBKDF2_PASSWORD_ITERATION_ACCOUNT);
 
-   // TODO(law): Add new user to user database.
+   insert_user(username, salt, password_hash, PBKDF2_PASSWORD_ITERATION_ACCOUNT);
 
-   // TODO(law): Log in newly added user.
-   // login_user(request, username, password);
-
-   redirect_request(request, "/?error=registration-not-implemented");
-   return;
+   // NOTE(Law): Perform the login with the initial password as a sanity check
+   // that things worked.
+   login_user(request, username, password);
 }
 
 static bool
@@ -907,10 +933,13 @@ output_html_header(Request_State *request, bool logged_in)
    OUTPUT_HTML_TEMPLATE("head.html");
    OUT("<header>");
 
-   OUT("   <strong><a href=\"/\">Big Shitty Platform</a></strong>");
+   OUT("<strong>"
+       "<a href=\"/\">Big Shitty Platform</a>"
+       "</strong>");
+
    if(logged_in)
    {
-      OUT("   <a href=\"/logout\">Logout</a>");
+      OUT("<a href=\"/logout\">Logout</a>");
    }
 
    OUT("</header>");
@@ -919,12 +948,12 @@ output_html_header(Request_State *request, bool logged_in)
 static void
 process_request(Request_State *request)
 {
+   initialize_request(request);
+
    log_message("%s request to \"%s\" received by thread %ld.",
                request->REQUEST_METHOD,
                request->SCRIPT_NAME,
                request->thread.index);
-
-   initialize_request(request);
 
    Memory_Arena *arena = &request->thread.arena;
    Key_Value_Table *url = &request->url;

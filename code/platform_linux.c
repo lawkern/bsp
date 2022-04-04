@@ -137,6 +137,31 @@ PLATFORM_GET_RANDOM_BYTES(get_random_bytes)
    }
 }
 
+static
+PLATFORM_INITIALIZE_SEMAPHORE(initialize_semaphore)
+{
+   semaphore->count = 0;
+   sem_init(&semaphore->handle, 0, 0);
+}
+
+static
+PLATFORM_LOCK(lock)
+{
+   if(__sync_add_and_fetch(&semaphore->count, 1) > 1)
+   {
+      sem_wait(&semaphore->handle);
+   }
+}
+
+static
+PLATFORM_UNLOCK(unlock)
+{
+   if(__sync_sub_and_fetch(&semaphore->count, 1) > 0)
+   {
+      sem_post(&semaphore->handle);
+   }
+}
+
 static bool
 accept_request(FCGX_Request *fcgx)
 {
