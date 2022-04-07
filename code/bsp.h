@@ -114,12 +114,16 @@ typedef struct
 
 #define MAX_USERNAME_LENGTH 32
 #define MAX_PASSWORD_LENGTH 512
+#define SESSION_ID_LENGTH 64
+
 typedef struct
 {
    char username[MAX_USERNAME_LENGTH + 1]; // includes null terminator
    unsigned char salt[16];
    unsigned char password_hash[32]; // Width of SHA256 output
    unsigned int iteration_count;
+
+   char session_id[SESSION_ID_LENGTH + 1]; // Include null terminator
 } User_Account;
 
 typedef struct
@@ -139,16 +143,13 @@ typedef struct
    Memory_Arena arena;
 } Thread_Context;
 
-#define SESSION_ID_LENGTH 64
-
 typedef struct
 {
    // NOTE(law): The contents of Request_State is intended to persist for the
    // lifetime of a single request made by a single user.
 
    Thread_Context thread;
-
-   char session_id[SESSION_ID_LENGTH + 1]; // Include null terminator
+   User_Account user;
 
 #define X(v) char *(v);
    CGI_METAVARIABLES_LIST

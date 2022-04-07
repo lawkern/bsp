@@ -169,6 +169,36 @@ get_user(char *username)
    return result;
 }
 
+static User_Account
+get_user_by_session(char *session_id)
+{
+   // TODO(law): Taking a lock around the entire lookup process for all
+   // interactions with the user table is overkill. Determine the best way to
+   // handle multiple readers/writers here.
+
+   // TODO(law): Restructure this to use a hash lookup on the user name.
+
+   // TODO(law): Consolidate with get_user() function?
+
+   User_Account result = {0};
+
+   lock(&global_user_account_table.semaphore);
+
+   for(unsigned int index = 0; index < global_user_account_table.count; ++index)
+   {
+      User_Account account = global_user_account_table.users[index];
+      if(strings_are_equal(account.session_id, session_id))
+      {
+         result = account;
+         break;
+      }
+   }
+
+   unlock(&global_user_account_table.semaphore);
+
+   return result;
+}
+
 static void
 generate_session_id(char *destination, size_t size)
 {
@@ -186,7 +216,7 @@ generate_session_id(char *destination, size_t size)
 static void
 clear_session(Request_State *request)
 {
-   memory_set(request->session_id, SESSION_ID_LENGTH, 0);
+   zero_memory(&request->user, sizeof(request->user));
 
    OUT("Content-type: text/html\n");
 #if DEVELOPMENT_BUILD
@@ -201,12 +231,24 @@ clear_session(Request_State *request)
 }
 
 static void
-create_session(Request_State *request)
+create_session(Request_State *request, char *username)
 {
    char session_id[SESSION_ID_LENGTH + 1] = {0};
    generate_session_id(session_id, SESSION_ID_LENGTH);
 
-   memory_copy(request->session_id, session_id, SESSION_ID_LENGTH);
+   lock(&global_user_account_table.semaphore);
+   {
+      for(unsigned int index = 0; index < global_user_account_table.count; ++index)
+      {
+         User_Account *user = global_user_account_table.users + index;
+         if(strings_are_equal(user->username, username))
+         {
+            memory_copy(user->session_id, session_id, SESSION_ID_LENGTH);
+            break;
+         }
+      }
+   }
+   unlock(&global_user_account_table.semaphore);
 
    OUT("Content-type: text/html\n");
 #if DEVELOPMENT_BUILD
@@ -459,7 +501,8 @@ initialize_request(Request_State *request)
    {
       // TODO(law): Check for valid existing session that matches the id
       // provided by the client.
-      memory_copy(request->session_id, session_id, SESSION_ID_LENGTH);
+      User_Account user = get_user_by_session(session_id);
+      memory_copy(&request->user, &user, sizeof(user));
    }
 
    // Update request data with URL parameters from query string.
@@ -850,7 +893,7 @@ login_user(Request_State *request, char *username, char *password)
       return;
    }
 
-   create_session(request);
+   create_session(request, username);
 }
 
 #define PBKDF2_PASSWORD_ITERATION_ACCOUNT 100000
@@ -917,7 +960,7 @@ is_logged_in(Request_State *request)
    bool result = false;
 
    char *session_id = get_value(&request->cookies, SESSION_COOKIE_KEY);
-   if(session_id && *session_id && strings_are_equal(request->session_id, session_id))
+   if(session_id && *session_id && strings_are_equal(request->user.session_id, session_id))
    {
       result = true;
    }
@@ -939,7 +982,13 @@ output_html_header(Request_State *request, bool logged_in)
 
    if(logged_in)
    {
+      char *username = encode_for_html(&request->thread.arena, request->user.username);
+
+      OUT("<span>");
+      OUT("<a href=\"/user?id=%s\">%s</a>", username, username);
+      OUT(" | ");
       OUT("<a href=\"/logout\">Logout</a>");
+      OUT("</span>");
    }
 
    OUT("</header>");
@@ -1009,6 +1058,34 @@ process_request(Request_State *request)
 
          OUTPUT_HTML_TEMPLATE("footer.html");
       }
+   }
+   else if(strings_are_equal(request->SCRIPT_NAME, "/user"))
+   {
+      output_request_header(request, 200);
+      output_html_header(request, logged_in);
+      OUT("<main>");
+
+      char *username = get_value(url, "id");
+      if(username)
+      {
+         User_Account user = get_user(username);
+         if(strings_are_equal(username, request->user.username))
+         {
+            OUT("<p>This is page is yours.</p>");
+            OUT("<p>Customization coming soon!</p>");
+         }
+         else if(*user.username)
+         {
+            OUT("<p>This is page is for <strong>%s</strong>.</p>", encode_for_html(arena, user.username));
+         }
+         else
+         {
+            OUT("<p>This user does not exist.</p>");
+         }
+      }
+
+      OUT("</main>");
+      OUTPUT_HTML_TEMPLATE("footer.html");
    }
    else if(strings_are_equal(request->SCRIPT_NAME, "/logout"))
    {

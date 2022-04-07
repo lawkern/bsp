@@ -49,10 +49,11 @@ package::
 	@mkdir -p $(PACKAGE_PATH)/html
 	@mkdir -p $(PACKAGE_PATH)/logs
 	@mkdir -p $(PACKAGE_PATH)/misc
-	@cp    $(BUILD_PATH)/bsp   $(PACKAGE_PATH)/
-	@cp -r $(DATA_PATH)/css/*  $(PACKAGE_PATH)/css/
-	@cp -r $(DATA_PATH)/html/* $(PACKAGE_PATH)/html/
-	@cp -r $(MISC_PATH)/*      $(PACKAGE_PATH)/misc/
+	@cp    $(BUILD_PATH)/bsp        $(PACKAGE_PATH)/
+	@cp    $(DATA_PATH)/favicon.ico $(PACKAGE_PATH)/
+	@cp -r $(DATA_PATH)/css/*       $(PACKAGE_PATH)/css/
+	@cp -r $(DATA_PATH)/html/*      $(PACKAGE_PATH)/html/
+	@cp -r $(MISC_PATH)/*           $(PACKAGE_PATH)/misc/
 
 deploy::
 	@rm -rf $(DEPLOYMENT_PATH)/bsp
