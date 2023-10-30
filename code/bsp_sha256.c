@@ -368,12 +368,12 @@ pbkdf2_hmac_sha256(unsigned char *output_key,
 static void
 test_hash_sha256(unsigned int run_count)
 {
-   for(unsigned int index = 0; index < run_count; ++index) // Basic tress test
+   for(unsigned int index = 0; index < run_count; ++index) // Basic stress test
    {
       {
          SHA256 hash;
 
-         unsigned char message_bytes[] = {};
+         unsigned char message_bytes[0] = {};
          unsigned char answer_bytes[] =
          {
             0xe3, 0xb0, 0xc4, 0x42, 0x98, 0xfc, 0x1c, 0x14,

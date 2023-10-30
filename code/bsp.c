@@ -977,7 +977,7 @@ output_html_header(Request_State *request, bool logged_in)
    OUT("<header>");
 
    OUT("<strong>"
-       "<a href=\"/\">Big Shitty Platform</a>"
+       "<a href=\"/\">BSP</a>"
        "</strong>");
 
    if(logged_in)
@@ -1071,12 +1071,12 @@ process_request(Request_State *request)
          User_Account user = get_user(username);
          if(strings_are_equal(username, request->user.username))
          {
-            OUT("<p>This is page is yours.</p>");
+            OUT("<p>This page is yours.</p>");
             OUT("<p>Customization coming soon!</p>");
          }
          else if(*user.username)
          {
-            OUT("<p>This is page is for <strong>%s</strong>.</p>", encode_for_html(arena, user.username));
+            OUT("<p>This page is for <strong>%s</strong>.</p>", encode_for_html(arena, user.username));
          }
          else
          {

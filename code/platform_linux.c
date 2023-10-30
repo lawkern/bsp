@@ -125,7 +125,7 @@ static
 PLATFORM_GET_RANDOM_BYTES(get_random_bytes)
 {
    zero_memory(destination, size);
-   size_t bytes_generated = getrandom(destination, size, 0);
+   size_t bytes_generated = getentropy(destination, size);
 
    if(bytes_generated < 0)
    {

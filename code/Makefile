@@ -12,7 +12,7 @@ DEPLOYMENT_PATH = /srv/bsp
 CC      = clang
 LDFLAGS = -lfcgi -lpthread
 
-CFLAGS  = -Wall -Werror -Wno-unused-function
+CFLAGS  = -Wall -Werror -Wno-unused-function -Wno-deprecated-declarations
 CFLAGS += -DWORKING_DIRECTORY=$(DEPLOYMENT_PATH)
 CFLAGS += -DREQUEST_THREAD_COUNT=$(REQUEST_THREAD_COUNT)
 
@@ -48,14 +48,12 @@ package::
 	@mkdir -p $(PACKAGE_PATH)/css
 	@mkdir -p $(PACKAGE_PATH)/html
 	@mkdir -p $(PACKAGE_PATH)/logs
-	@mkdir -p $(PACKAGE_PATH)/misc
 	@cp    $(BUILD_PATH)/bsp        $(PACKAGE_PATH)/
 	@cp    $(DATA_PATH)/favicon.ico $(PACKAGE_PATH)/
 	@cp -r $(DATA_PATH)/css/*       $(PACKAGE_PATH)/css/
 	@cp -r $(DATA_PATH)/html/*      $(PACKAGE_PATH)/html/
-	@cp -r $(MISC_PATH)/*           $(PACKAGE_PATH)/misc/
 
 deploy::
 	@rm -rf $(DEPLOYMENT_PATH)/bsp
-	@cp -r $(PACKAGE_PATH)/* $(DEPLOYMENT_PATH)/
-	@bash -c "$(DEPLOYMENT_PATH)/misc/restart_bsp.sh $(APPLICATION_PORT) $(DEPLOYMENT_PATH)/bsp"
+	@cp -r $(PACKAGE_PATH)/ $(DEPLOYMENT_PATH)/
+	@bash -c "$(MISC_PATH)/restart_bsp.sh $(APPLICATION_PORT) $(DEPLOYMENT_PATH)/bsp"
