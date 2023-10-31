@@ -176,6 +176,16 @@ PLATFORM_UNLOCK(platform_unlock)
    }
 }
 
+static
+PLATFORM_TIMER_BEGIN(platform_timer_begin)
+{
+}
+
+static
+PLATFORM_TIMER_END(platform_timer_end)
+{
+}
+
 static bool
 linux_accept_request(FCGX_Request *fcgx)
 {
@@ -205,6 +215,7 @@ linux_launch_request_thread(void *data)
    while(linux_accept_request(&fcgx))
    {
       initialize_arena(&thread.arena, base_address, arena_size);
+      zero_memory(thread.timers, sizeof(thread.timers));
 
       Platform_Request_State platform_request = {0};
       platform_request.fcgx = fcgx;

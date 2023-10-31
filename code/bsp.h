@@ -111,6 +111,7 @@ typedef struct
 
    unsigned int index;
    Memory_Arena arena;
+   Platform_Timer timers[PLATFORM_TIMER_COUNT];
 } Thread_Context;
 
 typedef struct

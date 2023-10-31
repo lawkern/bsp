@@ -168,6 +168,23 @@ PLATFORM_UNLOCK(platform_unlock)
    }
 }
 
+static
+PLATFORM_TIMER_BEGIN(platform_timer_begin)
+{
+   Platform_Timer *timer = thread->timers + id;
+   timer->id = id;
+   timer->label = label;
+   timer->start = __rdtsc();
+}
+
+static
+PLATFORM_TIMER_END(platform_timer_end)
+{
+   Platform_Timer *timer = thread->timers + id;
+   timer->elapsed += (__rdtsc() - timer->start);
+   timer->hits++;
+}
+
 static bool
 win32_accept_request(FCGX_Request *fcgx)
 {
@@ -197,6 +214,7 @@ win32_launch_request_thread(VOID *data)
    while(win32_accept_request(&fcgx))
    {
       initialize_arena(&thread.arena, base_address, arena_size);
+      ZeroMemory(thread.timers, sizeof(thread.timers));
 
       Platform_Request_State platform_request = {0};
       platform_request.fcgx = fcgx;

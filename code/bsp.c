@@ -473,6 +473,8 @@ get_value(Key_Value_Table *table, char *key)
 static void
 initialize_request(Request_State *request)
 {
+   TIMER_BLOCK_BEGIN(initialize_request);
+
    // Update request data with CGI metavariables from host environment.
 #define X(v) request->v = GET_ENVIRONMENT_PARAMETER(#v);  \
    if(!request->v) request->v = "";
@@ -560,6 +562,8 @@ initialize_request(Request_State *request)
          }
       }
    }
+
+   TIMER_BLOCK_END(initialize_request);
 }
 
 static void
@@ -672,6 +676,8 @@ encode_for_html(Memory_Arena *arena, char *input_string)
 static void
 output_html_template(Request_State *request, char *path)
 {
+   TIMER_BLOCK_BEGIN(output_html_template);
+
    // NOTE(law): Because of the way this output method works, the contents of
    // the html file is treated as a format string. Therefore, % symbols need to
    // be escaped to work normally (assuming that no additional arguments are
@@ -689,6 +695,8 @@ output_html_template(Request_State *request, char *path)
       OUT("<p class=\"warning\">MISSING TEMPLATE: %s</p>", path);
 #endif
    }
+
+   TIMER_BLOCK_END(output_html_template);
 }
 
 static void
@@ -795,6 +803,29 @@ debug_output_request_data(Request_State *request)
    OUT("<tr><td>Arena Used</td><td>%0.1f%s</td></tr>", arena_used, units_used);
    OUT("</table>");
 
+   OUT("<table>");
+   OUT("<table>");
+   OUT("<tr>");
+   OUT("<th>Timed Profiler Block</th>");
+   OUT("<th>Hits</th>");
+   OUT("<th>Total Cycles</th>");
+   OUT("<th>Cycles per Hit</th>");
+   OUT("</tr>");
+   for(unsigned int index = 0; index < PLATFORM_TIMER_COUNT; ++index)
+   {
+      Platform_Timer *timer = request->thread.timers + index;
+      if(timer->hits > 0)
+      {
+         OUT("<tr>");
+         OUT("<td>%s</td>", encode_for_html(arena, timer->label));
+         OUT("<td>%5u</td>", timer->hits);
+         OUT("<td>%10u</td>", timer->elapsed);
+         OUT("<td>%10u</td>", timer->elapsed / timer->hits);
+         OUT("</tr>");
+      }
+   }
+   OUT("</table>");
+
    // Output user accounts
    OUT("<table>");
    OUT("<tr>");
@@ -879,6 +910,7 @@ login_user(Request_State *request, char *username, char *password)
    unsigned char *password_bytes = (unsigned char *)password;
    size_t password_size = string_length(password);
 
+   TIMER_BLOCK_BEGIN(pbkdf2_hmac_sha256);
    pbkdf2_hmac_sha256(password_hash,
                       sizeof(password_hash),
                       password_bytes,
@@ -886,6 +918,7 @@ login_user(Request_State *request, char *username, char *password)
                       user.salt,
                       sizeof(user.salt),
                       user.iteration_count);
+   TIMER_BLOCK_END(pbkdf2_hmac_sha256);
 
    if(!bytes_are_equal(password_hash, user.password_hash, sizeof(user.password_hash)))
    {
@@ -998,6 +1031,8 @@ output_html_header(Request_State *request, bool logged_in)
 static void
 process_request(Request_State *request)
 {
+   TIMER_BLOCK_BEGIN(process_request);
+
    initialize_request(request);
 
    platform_log_message("%s request to \"%s\" received by thread %ld.",
@@ -1099,6 +1134,8 @@ process_request(Request_State *request)
       OUTPUT_HTML_TEMPLATE("404.html");
       OUTPUT_HTML_TEMPLATE("footer.html");
    }
+
+   TIMER_BLOCK_END(process_request);
 
    debug_output_request_data(request);
 }
