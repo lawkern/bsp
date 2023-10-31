@@ -9,6 +9,26 @@
 static Key_Value_Table    global_html_template_table;
 static User_Account_Table global_user_account_table;
 
+#define CPU_TIMER_BEGIN(label) cpu_timer_begin(&request->thread, (CPU_TIMER_##label), (#label))
+#define CPU_TIMER_END(label) cpu_timer_end(&request->thread, (CPU_TIMER_##label))
+
+static void
+cpu_timer_begin(Thread_Context *thread, Cpu_Timer_Id id, char *label)
+{
+   Cpu_Timer *timer = thread->timers + id;
+   timer->id = id;
+   timer->label = label;
+   timer->start = platform_cpu_timestamp_counter();
+}
+
+static void
+cpu_timer_end(Thread_Context *thread, Cpu_Timer_Id id)
+{
+   Cpu_Timer *timer = thread->timers + id;
+   timer->elapsed += (platform_cpu_timestamp_counter() - timer->start);
+   timer->hits++;
+}
+
 static void
 import_users_from_database(User_Account_Table *table)
 {
@@ -473,7 +493,7 @@ get_value(Key_Value_Table *table, char *key)
 static void
 initialize_request(Request_State *request)
 {
-   TIMER_BLOCK_BEGIN(initialize_request);
+   CPU_TIMER_BEGIN(initialize_request);
 
    // Update request data with CGI metavariables from host environment.
 #define X(v) request->v = GET_ENVIRONMENT_PARAMETER(#v);  \
@@ -563,7 +583,7 @@ initialize_request(Request_State *request)
       }
    }
 
-   TIMER_BLOCK_END(initialize_request);
+   CPU_TIMER_END(initialize_request);
 }
 
 static void
@@ -676,7 +696,7 @@ encode_for_html(Memory_Arena *arena, char *input_string)
 static void
 output_html_template(Request_State *request, char *path)
 {
-   TIMER_BLOCK_BEGIN(output_html_template);
+   CPU_TIMER_BEGIN(output_html_template);
 
    // NOTE(law): Because of the way this output method works, the contents of
    // the html file is treated as a format string. Therefore, % symbols need to
@@ -696,7 +716,7 @@ output_html_template(Request_State *request, char *path)
 #endif
    }
 
-   TIMER_BLOCK_END(output_html_template);
+   CPU_TIMER_END(output_html_template);
 }
 
 static void
@@ -811,9 +831,9 @@ debug_output_request_data(Request_State *request)
    OUT("<th>Total Cycles</th>");
    OUT("<th>Cycles per Hit</th>");
    OUT("</tr>");
-   for(unsigned int index = 0; index < PLATFORM_TIMER_COUNT; ++index)
+   for(unsigned int index = 0; index < CPU_TIMER_COUNT; ++index)
    {
-      Platform_Timer *timer = request->thread.timers + index;
+      Cpu_Timer *timer = request->thread.timers + index;
       if(timer->hits > 0)
       {
          OUT("<tr>");
@@ -910,7 +930,7 @@ login_user(Request_State *request, char *username, char *password)
    unsigned char *password_bytes = (unsigned char *)password;
    size_t password_size = string_length(password);
 
-   TIMER_BLOCK_BEGIN(pbkdf2_hmac_sha256);
+   CPU_TIMER_BEGIN(pbkdf2_hmac_sha256);
    pbkdf2_hmac_sha256(password_hash,
                       sizeof(password_hash),
                       password_bytes,
@@ -918,7 +938,7 @@ login_user(Request_State *request, char *username, char *password)
                       user.salt,
                       sizeof(user.salt),
                       user.iteration_count);
-   TIMER_BLOCK_END(pbkdf2_hmac_sha256);
+   CPU_TIMER_END(pbkdf2_hmac_sha256);
 
    if(!bytes_are_equal(password_hash, user.password_hash, sizeof(user.password_hash)))
    {
@@ -972,14 +992,15 @@ register_user(Request_State *request, char *username, char *password)
    platform_generate_random_bytes(salt, sizeof(salt));
 
    unsigned char password_hash[sizeof(existing_user.password_hash)];
+   unsigned char *password_bytes = (unsigned char *)password;
+   size_t password_size = string_length(password);
 
-   pbkdf2_hmac_sha256(password_hash,
-                      sizeof(password_hash),
-                      (unsigned char *)password,
-                      string_length(password),
-                      salt,
-                      sizeof(salt),
+   CPU_TIMER_BEGIN(pbkdf2_hmac_sha256);
+   pbkdf2_hmac_sha256(password_hash, sizeof(password_hash),
+                      password_bytes, password_size,
+                      salt, sizeof(salt),
                       PBKDF2_PASSWORD_ITERATION_ACCOUNT);
+   CPU_TIMER_END(pbkdf2_hmac_sha256);
 
    insert_user(username, salt, password_hash, PBKDF2_PASSWORD_ITERATION_ACCOUNT);
 
@@ -1031,7 +1052,7 @@ output_html_header(Request_State *request, bool logged_in)
 static void
 process_request(Request_State *request)
 {
-   TIMER_BLOCK_BEGIN(process_request);
+   CPU_TIMER_BEGIN(process_request);
 
    initialize_request(request);
 
@@ -1135,7 +1156,7 @@ process_request(Request_State *request)
       OUTPUT_HTML_TEMPLATE("footer.html");
    }
 
-   TIMER_BLOCK_END(process_request);
+   CPU_TIMER_END(process_request);
 
    debug_output_request_data(request);
 }

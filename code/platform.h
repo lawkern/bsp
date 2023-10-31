@@ -8,31 +8,12 @@
 
 #include <fcgiapp.h>
 
-typedef enum
-{
-   PLATFORM_TIMER_process_request,
-   PLATFORM_TIMER_initialize_request,
-   PLATFORM_TIMER_output_html_template,
-   PLATFORM_TIMER_pbkdf2_hmac_sha256,
-
-   PLATFORM_TIMER_COUNT,
-} Platform_Timer_Id;
-
-typedef struct
-{
-   Platform_Timer_Id id;
-   char *label;
-
-   unsigned long long start;
-   unsigned long long elapsed;
-   unsigned long long hits;
-} Platform_Timer;
-
 // NOTE(law): The header bsp.h is included here for the definition of
 // Request_State needed by Platform_Request_State. That means that the #include
 // in bsp.c is unnecessary. It's still there for the moment in case this is
 // split into multiple translation units.
 
+#include "platform_intrinsics.h"
 #include "bsp.h"
 
 // NOTE(law): The platform-agnostic Request_State struct is the first field of
@@ -91,14 +72,6 @@ static PLATFORM_LOCK(platform_lock);
 #define PLATFORM_UNLOCK(name) void name(Platform_Semaphore *semaphore)
 static PLATFORM_UNLOCK(platform_unlock);
 
-#define PLATFORM_TIMER_BEGIN(name) void name(Thread_Context *thread, Platform_Timer_Id id, char *label)
-static PLATFORM_TIMER_BEGIN(platform_timer_begin);
-
-#define PLATFORM_TIMER_END(name) void name(Thread_Context *thread, Platform_Timer_Id id)
-static PLATFORM_TIMER_END(platform_timer_end);
-
-#define TIMER_BLOCK_BEGIN(label) platform_timer_begin(&request->thread, (PLATFORM_TIMER_##label), (#label))
-#define TIMER_BLOCK_END(label) platform_timer_end(&request->thread, (PLATFORM_TIMER_##label))
 
 #define PLATFORM_H
 #endif

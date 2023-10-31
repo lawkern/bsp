@@ -168,23 +168,6 @@ PLATFORM_UNLOCK(platform_unlock)
    }
 }
 
-static
-PLATFORM_TIMER_BEGIN(platform_timer_begin)
-{
-   Platform_Timer *timer = thread->timers + id;
-   timer->id = id;
-   timer->label = label;
-   timer->start = __rdtsc();
-}
-
-static
-PLATFORM_TIMER_END(platform_timer_end)
-{
-   Platform_Timer *timer = thread->timers + id;
-   timer->elapsed += (__rdtsc() - timer->start);
-   timer->hits++;
-}
-
 static bool
 win32_accept_request(FCGX_Request *fcgx)
 {

@@ -104,6 +104,26 @@ typedef struct
    User_Account users[2 * 1024 * 1024];
 } User_Account_Table;
 
+typedef enum
+{
+   CPU_TIMER_process_request,
+   CPU_TIMER_initialize_request,
+   CPU_TIMER_output_html_template,
+   CPU_TIMER_pbkdf2_hmac_sha256,
+
+   CPU_TIMER_COUNT,
+} Cpu_Timer_Id;
+
+typedef struct
+{
+   Cpu_Timer_Id id;
+   char *label;
+
+   unsigned long long start;
+   unsigned long long elapsed;
+   unsigned long long hits;
+} Cpu_Timer;
+
 typedef struct
 {
    // NOTE(law): Add any thread-related information that should persist beyond
@@ -111,7 +131,7 @@ typedef struct
 
    unsigned int index;
    Memory_Arena arena;
-   Platform_Timer timers[PLATFORM_TIMER_COUNT];
+   Cpu_Timer timers[CPU_TIMER_COUNT];
 } Thread_Context;
 
 typedef struct

@@ -176,16 +176,6 @@ PLATFORM_UNLOCK(platform_unlock)
    }
 }
 
-static
-PLATFORM_TIMER_BEGIN(platform_timer_begin)
-{
-}
-
-static
-PLATFORM_TIMER_END(platform_timer_end)
-{
-}
-
 static bool
 linux_accept_request(FCGX_Request *fcgx)
 {
