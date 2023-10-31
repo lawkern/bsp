@@ -28,7 +28,7 @@ import_users_from_database(User_Account_Table *table)
    // get away without needing a database indefinitely, but at the very least
    // this could be stored more efficiently in binary.
 
-   char *database_contents = read_file("users.dbsp");
+   char *database_contents = platform_read_file("users.dbsp");
 
    if(database_contents)
    {
@@ -103,11 +103,11 @@ import_users_from_database(User_Account_Table *table)
          table->users[table->count++] = user;
       }
 
-      deallocate(database_contents);
+      platform_deallocate(database_contents);
    }
    else
    {
-      log_message("[WARNING] Failed to open the user database.");
+      platform_log_message("[WARNING] Failed to open the user database.");
    }
 }
 
@@ -126,7 +126,7 @@ insert_user(char *username,
 
    // TODO(law): Restructure this to use a hash table.
 
-   lock(&global_user_account_table.semaphore);
+   platform_lock(&global_user_account_table.semaphore);
 
    if(global_user_account_table.count < ARRAY_LENGTH(global_user_account_table.users))
    {
@@ -138,7 +138,7 @@ insert_user(char *username,
       account->iteration_count = iteration_count;
    }
 
-   unlock(&global_user_account_table.semaphore);
+   platform_unlock(&global_user_account_table.semaphore);
 }
 
 static User_Account
@@ -152,7 +152,7 @@ get_user(char *username)
 
    User_Account result = {0};
 
-   lock(&global_user_account_table.semaphore);
+   platform_lock(&global_user_account_table.semaphore);
 
    for(unsigned int index = 0; index < global_user_account_table.count; ++index)
    {
@@ -164,7 +164,7 @@ get_user(char *username)
       }
    }
 
-   unlock(&global_user_account_table.semaphore);
+   platform_unlock(&global_user_account_table.semaphore);
 
    return result;
 }
@@ -182,7 +182,7 @@ get_user_by_session(char *session_id)
 
    User_Account result = {0};
 
-   lock(&global_user_account_table.semaphore);
+   platform_lock(&global_user_account_table.semaphore);
 
    for(unsigned int index = 0; index < global_user_account_table.count; ++index)
    {
@@ -194,7 +194,7 @@ get_user_by_session(char *session_id)
       }
    }
 
-   unlock(&global_user_account_table.semaphore);
+   platform_unlock(&global_user_account_table.semaphore);
 
    return result;
 }
@@ -205,7 +205,7 @@ generate_session_id(char *destination, size_t size)
    ASSERT(size == 64);
 
    unsigned char message[4096];
-   get_random_bytes(message, sizeof(message));
+   platform_generate_random_bytes(message, sizeof(message));
 
    SHA256 hash = hash_sha256(message, sizeof(message));
    memory_copy(destination, hash.text, size);
@@ -236,7 +236,7 @@ create_session(Request_State *request, char *username)
    char session_id[SESSION_ID_LENGTH + 1] = {0};
    generate_session_id(session_id, SESSION_ID_LENGTH);
 
-   lock(&global_user_account_table.semaphore);
+   platform_lock(&global_user_account_table.semaphore);
    {
       for(unsigned int index = 0; index < global_user_account_table.count; ++index)
       {
@@ -248,7 +248,7 @@ create_session(Request_State *request, char *username)
          }
       }
    }
-   unlock(&global_user_account_table.semaphore);
+   platform_unlock(&global_user_account_table.semaphore);
 
    OUT("Content-type: text/html\n");
 #if DEVELOPMENT_BUILD
@@ -423,7 +423,7 @@ insert_key_value(Key_Value_Table *table, char *key, char *value)
    // TODO(law): Resizable table?
    if(table->count >= ARRAY_LENGTH(table->entries))
    {
-      log_message("[WARNING] Failed to insert key/value - table was full.");
+      platform_log_message("[WARNING] Failed to insert key/value - table was full.");
       return;
    }
 
@@ -562,7 +562,7 @@ initialize_request(Request_State *request)
 }
 
 static void
-initialize_application()
+initialize_application(void)
 {
    // NOTE(law): This function is called once at program startup. It assumes
    // resources are released automatically when the program exits (i.e. this
@@ -576,7 +576,7 @@ initialize_application()
 #endif
 
    // NOTE(law): Read user accounts into memory.
-   initialize_semaphore(&global_user_account_table.semaphore);
+   platform_initialize_semaphore(&global_user_account_table.semaphore);
    import_users_from_database(&global_user_account_table);
 
    // NOTE(law): Read html tempates into memory.
@@ -598,7 +598,7 @@ initialize_application()
       // just for template data.
 
       char *path = template_paths[index];
-      char *template = read_file(path);
+      char *template = platform_read_file(path);
       insert_key_value(&global_html_template_table, path, template);
    }
 }
@@ -683,7 +683,7 @@ output_html_template(Request_State *request, char *path)
    }
    else
    {
-      log_message("[WARNING] HTML template \"%s\" could not be found.", path);
+      platform_log_message("[WARNING] HTML template \"%s\" could not be found.", path);
 #if DEVELOPMENT_BUILD
       OUT("<p class=\"warning\">MISSING TEMPLATE: %s</p>", path);
 #endif
@@ -935,7 +935,7 @@ register_user(Request_State *request, char *username, char *password)
    // NOTE(law): Generate the random bytes that will act as the user's salt
    // value for producing their password hash.
    unsigned char salt[sizeof(existing_user.salt)];
-   get_random_bytes(salt, sizeof(salt));
+   platform_generate_random_bytes(salt, sizeof(salt));
 
    unsigned char password_hash[sizeof(existing_user.password_hash)];
 
@@ -999,10 +999,10 @@ process_request(Request_State *request)
 {
    initialize_request(request);
 
-   log_message("%s request to \"%s\" received by thread %ld.",
-               request->REQUEST_METHOD,
-               request->SCRIPT_NAME,
-               request->thread.index);
+   platform_log_message("%s request to \"%s\" received by thread %ld.",
+                        request->REQUEST_METHOD,
+                        request->SCRIPT_NAME,
+                        request->thread.index);
 
    Memory_Arena *arena = &request->thread.arena;
    Key_Value_Table *url = &request->url;

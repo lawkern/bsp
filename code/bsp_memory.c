@@ -223,7 +223,7 @@ push_size_(Memory_Arena *arena, size_t size)
    else
    {
       // TODO(law): Replace with a growing arena.
-      log_message("[WARNING] Arena is full, failed to allocate memory.");
+      platform_log_message("[WARNING] Arena is full, failed to allocate memory.");
    }
 
    return result;

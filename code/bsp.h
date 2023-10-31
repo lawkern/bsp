@@ -13,14 +13,14 @@
 #define STRINGIFY_(x) #x
 #define STRINGIFY(x) STRINGIFY_(x)
 
-#define ASSERT(expression)                                              \
-   do                                                                   \
-   {                                                                    \
-      if(!(expression))                                                 \
-      {                                                                 \
-         log_message("Assertion fired on %s:%d", __FILE__, __LINE__);   \
-         assert(expression);                                            \
-      }                                                                 \
+#define ASSERT(expression)                                                     \
+   do                                                                          \
+   {                                                                           \
+      if(!(expression))                                                        \
+      {                                                                        \
+         platform_log_message("Assertion fired on %s:%d", __FILE__, __LINE__); \
+         assert(expression);                                                   \
+      }                                                                        \
    } while(0)
 
 #define KILOBYTES(v) (1000LL * (v))
@@ -32,36 +32,6 @@
 #define GIBIBYTES(v) (1024LL * MEBIBYTES(v))
 
 #define ARRAY_LENGTH(a) (sizeof(a) / sizeof((a)[0]))
-
-#define PLATFORM_ALLOCATE(name) void *name(size_t size)
-static PLATFORM_ALLOCATE(allocate);
-
-#define PLATFORM_DEALLOCATE(name) void name(void *memory)
-static PLATFORM_DEALLOCATE(deallocate);
-
-#define PLATFORM_LOG_MESSAGE(name) void name(char *format, ...)
-static PLATFORM_LOG_MESSAGE(log_message);
-
-#define PLATFORM_READ_FILE(name) char *name(char *file_name)
-static PLATFORM_READ_FILE(read_file);
-
-#define PLATFORM_GET_RANDOM_BYTES(name) void name(void *destination, size_t size)
-static PLATFORM_GET_RANDOM_BYTES(get_random_bytes);
-
-typedef struct
-{
-   volatile unsigned int count;
-   sem_t handle;
-} Platform_Semaphore;
-
-#define PLATFORM_INITIALIZE_SEMAPHORE(name) void name(Platform_Semaphore *semaphore)
-static PLATFORM_INITIALIZE_SEMAPHORE(initialize_semaphore);
-
-#define PLATFORM_LOCK(name) void name(Platform_Semaphore *semaphore)
-static PLATFORM_LOCK(lock);
-
-#define PLATFORM_UNLOCK(name) void name(Platform_Semaphore *semaphore)
-static PLATFORM_UNLOCK(unlock);
 
 #define CGI_METAVARIABLES_LIST                  \
    X(AUTH_TYPE)                                 \
@@ -136,7 +106,7 @@ typedef struct
 
 typedef struct
 {
-   // TODO(law): Add any thread-related information that should persist beyond
+   // NOTE(law): Add any thread-related information that should persist beyond
    // the lifetime of a single request here.
 
    unsigned int index;

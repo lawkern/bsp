@@ -263,13 +263,13 @@ hmac_sha256(unsigned char *key, size_t key_size,
 
    // Append message to inner padded key
    size_t inner_message_size = sizeof(inner_padded_key) + message_size;
-   unsigned char *inner_message = allocate(inner_message_size);
+   unsigned char *inner_message = platform_allocate(inner_message_size);
 
    memory_copy(inner_message, inner_padded_key, sizeof(inner_padded_key));
    memory_copy(inner_message + sizeof(inner_padded_key), message, message_size);
 
    SHA256 inner_hash = hash_sha256(inner_message, inner_message_size);
-   deallocate(inner_message);
+   platform_deallocate(inner_message);
 
    // Append inner hash to outer padded key
    unsigned char outer_message[sizeof(outer_padded_key) + sizeof(inner_hash.bytes)];
@@ -318,7 +318,7 @@ pbkdf2_hmac_sha256(unsigned char *output_key,
       // always 4 bytes. Maybe require the provided salt to include an
       // additional 4 unused bytes at the end?
       size_t u1_size = salt_size + sizeof(unsigned int);
-      unsigned char *u1_message = allocate(u1_size);
+      unsigned char *u1_message = platform_allocate(u1_size);
 
       memory_copy(u1_message, salt, salt_size);
 
@@ -361,7 +361,7 @@ pbkdf2_hmac_sha256(unsigned char *output_key,
          memory_copy(block_address, u1.bytes, 32);
       }
 
-      deallocate(u1_message);
+      platform_deallocate(u1_message);
    }
 }
 
@@ -373,7 +373,7 @@ test_hash_sha256(unsigned int run_count)
       {
          SHA256 hash;
 
-         unsigned char message_bytes[0] = {};
+         unsigned char message_bytes[] = {0};
          unsigned char answer_bytes[] =
          {
             0xe3, 0xb0, 0xc4, 0x42, 0x98, 0xfc, 0x1c, 0x14,
@@ -385,7 +385,7 @@ test_hash_sha256(unsigned int run_count)
          char *message_text = "";
          char *answer_text = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
-         hash = hash_sha256(message_bytes, sizeof(message_bytes));
+         hash = hash_sha256(message_bytes, 0);
          ASSERT(bytes_are_equal(hash.bytes, answer_bytes, sizeof(hash.bytes)));
          ASSERT(strings_are_equal(hash.text, answer_text));
 
