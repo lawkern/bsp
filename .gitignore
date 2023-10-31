@@ -1,3 +1,5 @@
 build
 *.log
 *.dbsp
+*.rdbg
+fcgiapp.h

@@ -192,7 +192,7 @@ hexadecimal_string_to_bytes(unsigned char *destination, size_t destination_size,
       hex_byte_string[1] = *source++;
       hex_byte_string[2] = 0;
 
-      *destination++ = hexadecimal_string_to_integer(hex_byte_string);
+      *destination++ = (unsigned char)hexadecimal_string_to_integer(hex_byte_string);
 
       destination_size -= 1;
       source_size      -= 2;

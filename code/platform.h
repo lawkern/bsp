@@ -26,6 +26,14 @@ typedef struct
    FCGX_Request fcgx;
 } Platform_Request_State;
 
+#ifdef OUT
+#undef OUT
+#endif
+
+#ifdef ERR
+#undef ERR
+#endif
+
 #define OUT(...) FCGX_FPrintF(((Platform_Request_State *)request)->fcgx.out, __VA_ARGS__)
 #define ERR(...) FCGX_FPrintF(((Platform_Request_State *)request)->fcgx.err, __VA_ARGS__)
 

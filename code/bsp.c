@@ -44,7 +44,7 @@ import_users_from_database(User_Account_Table *table)
             ++scan;
          }
          size_t salt_start_length = 2 * sizeof(user.salt);
-         ASSERT((scan - salt_start) == salt_start_length);
+         ASSERT((size_t)(scan - salt_start) == salt_start_length);
 
          hexadecimal_string_to_bytes((unsigned char *)user.salt,
                                      sizeof(user.salt),
@@ -61,7 +61,7 @@ import_users_from_database(User_Account_Table *table)
             ++scan;
          }
          size_t hash_start_length = 2 * sizeof(user.password_hash);
-         ASSERT((scan - hash_start) == hash_start_length);
+         ASSERT((size_t)(scan - hash_start) == hash_start_length);
 
          hexadecimal_string_to_bytes((unsigned char *)user.password_hash,
                                      sizeof(user.password_hash),
@@ -78,7 +78,7 @@ import_users_from_database(User_Account_Table *table)
             ++scan;
          }
          size_t iteration_start_length = 2 * sizeof(user.iteration_count);
-         ASSERT((scan - iteration_start) == iteration_start_length);
+         ASSERT((size_t)(scan - iteration_start) == iteration_start_length);
 
          char iteration_string[2 * sizeof(user.iteration_count) + 1] = {0};
          memory_copy(iteration_string, iteration_start, iteration_start_length);
@@ -321,10 +321,11 @@ hash_key_string(char *string)
 
    unsigned long result = 5381;
 
-   int c;
-   while((c = *string++))
+   int character = *string++;
+   while(character)
    {
-      result = ((result << 5) + result) + c; /* result * 33 + c */
+      result = ((result << 5) + result) + character; /* result * 33 + c */
+      character = *string++;
    }
 
    return result;
@@ -507,11 +508,11 @@ initialize_request(Request_State *request)
 
    // Update request data with URL parameters from query string.
    char *query_string = request->QUERY_STRING;
-   Key_Value_Pair parameter = consume_key_value_pair(arena, &query_string, '&');
-   while(*parameter.key)
+   Key_Value_Pair url_parameter = consume_key_value_pair(arena, &query_string, '&');
+   while(*url_parameter.key)
    {
-      size_t key_size   = string_length(parameter.key) + 1;
-      size_t value_size = string_length(parameter.value) + 1;
+      size_t key_size   = string_length(url_parameter.key) + 1;
+      size_t value_size = string_length(url_parameter.value) + 1;
 
       char *decoded_key   = PUSH_SIZE(arena, key_size);
       char *decoded_value = PUSH_SIZE(arena, value_size);
@@ -521,27 +522,27 @@ initialize_request(Request_State *request)
          break;
       }
 
-      decode_query_string(decoded_key, parameter.key, key_size);
-      decode_query_string(decoded_value, parameter.value, value_size);
+      decode_query_string(decoded_key, url_parameter.key, key_size);
+      decode_query_string(decoded_value, url_parameter.value, value_size);
 
       insert_key_value(url, decoded_key, decoded_value);
-      parameter = consume_key_value_pair(arena, &query_string, '&');
+      url_parameter = consume_key_value_pair(arena, &query_string, '&');
    }
 
    // Update request data with form parameters from POST request.
    if(strings_are_equal(request->REQUEST_METHOD, "POST") && request->CONTENT_LENGTH)
    {
-      size_t content_length = decimal_string_to_integer(request->CONTENT_LENGTH);
+      int content_length = decimal_string_to_integer(request->CONTENT_LENGTH);
       char *post_data = PUSH_SIZE(arena, content_length + 1);
       if(post_data)
       {
          GET_STRING_FROM_INPUT_STREAM(post_data, content_length + 1);
 
-         Key_Value_Pair parameter = consume_key_value_pair(arena, &post_data, '&');
-         while(*parameter.key)
+         Key_Value_Pair post_parameter = consume_key_value_pair(arena, &post_data, '&');
+         while(*post_parameter.key)
          {
-            size_t key_size   = string_length(parameter.key) + 1;
-            size_t value_size = string_length(parameter.value) + 1;
+            size_t key_size   = string_length(post_parameter.key) + 1;
+            size_t value_size = string_length(post_parameter.value) + 1;
 
             char *decoded_key   = PUSH_SIZE(arena, key_size);
             char *decoded_value = PUSH_SIZE(arena, value_size);
@@ -551,11 +552,11 @@ initialize_request(Request_State *request)
                break;
             }
 
-            decode_query_string(decoded_key, parameter.key, key_size);
-            decode_query_string(decoded_value, parameter.value, value_size);
+            decode_query_string(decoded_key, post_parameter.key, key_size);
+            decode_query_string(decoded_value, post_parameter.value, value_size);
 
             insert_key_value(form, decoded_key, decoded_value);
-            parameter = consume_key_value_pair(arena, &post_data, '&');
+            post_parameter = consume_key_value_pair(arena, &post_data, '&');
          }
       }
    }

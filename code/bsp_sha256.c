@@ -152,7 +152,7 @@ hash_sha256(unsigned char *message, size_t message_size)
       // Assemble the penultimate chunk into a local buffer.
       memory_copy(chunk, message, byte_index_for_one_bit);
       chunk[byte_index_for_one_bit] = 0x80; // 0x80 == 0b10000000
-      for(unsigned int index = byte_index_for_one_bit + 1; index < 64; ++index)
+      for(uint64_t index = byte_index_for_one_bit + 1; index < 64; ++index)
       {
          chunk[index] = 0;
       }
@@ -173,7 +173,7 @@ hash_sha256(unsigned char *message, size_t message_size)
       // Assemble the final chunk into a local buffer.
       memory_copy(chunk, message, byte_index_for_one_bit);
       chunk[byte_index_for_one_bit] = 0x80; // 0x80 == 0b10000000
-      for(unsigned int index = (byte_index_for_one_bit + 1); index < 64; ++index)
+      for(uint64_t index = (byte_index_for_one_bit + 1); index < 64; ++index)
       {
          chunk[index] = 0;
       }

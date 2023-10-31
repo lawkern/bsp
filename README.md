@@ -24,8 +24,9 @@ Build and Deployment
 --------------------
 
 By default, the executable and data assets will be deployed to the directory
-`/srv/bsp`. This can be configured by updating the value of `DEPLOYMENT_PATH` in
-the Makefile. Ensure this directory exists before initiating a build.
+`/srv/bsp` on Linux and macOS. This can be configured by updating the value of
+`DEPLOYMENT_PATH` in the provided Makefile. Ensure this directory exists before
+initiating a build.
 
 To build on Linux or macOS, navigate to the code directory and run:
 
@@ -41,6 +42,22 @@ restart the application (using spawn-fcgi) on the port specified by
 ```
 make production
 ```
+
+In order to build on Windows, it is necessary to acquire a copy of the header
+file fcgiapp.h (to be added to the code directory) and the library files
+libfcgi.lib and libfcgi.dll (to be added to the build directory).
+
+To build, navigate to the code directory using a Command Prompt that has
+initialized the MSVC command-line build tools. From there, run the command:
+
+
+```
+build.bat
+```
+
+By default, the resulting build artifacts will be placed in
+`d:\inetpub\bsp`. For the Windows build, the executable must be run manually
+from the command line or a debugger.
 
 BSP does not currently implement its own web server. A sample server entry for
 nginx is provided in the misc directory.
