@@ -1,5 +1,5 @@
 APPLICATION_PORT = 6969
-REQUEST_THREAD_COUNT = 4
+REQUEST_THREAD_COUNT = 8
 
 CODE_PATH  = ../code
 DATA_PATH  = ../data
@@ -12,7 +12,7 @@ DEPLOYMENT_PATH = /srv/bsp
 CC      = clang
 LDFLAGS = -lfcgi -lpthread
 
-CFLAGS  = -Wall -Werror -Wno-unused-function -Wno-deprecated-declarations
+CFLAGS  = -std=c99 -Wall -Werror -Wno-unused-function -Wno-deprecated-declarations
 CFLAGS += -DWORKING_DIRECTORY=$(DEPLOYMENT_PATH)
 CFLAGS += -DREQUEST_THREAD_COUNT=$(REQUEST_THREAD_COUNT)
 
