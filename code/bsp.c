@@ -728,7 +728,8 @@ debug_output_request_data(Request_State *request)
        "section#debug-information {padding: 0 1em; border-top: 1px solid #444; background: #181818;}"
        "section#debug-information table {font-family: monospace; min-width:250px; margin: 1em;}"
        "section#debug-information caption {text-align: left; font-weight: bold;}"
-       "section#debug-information th {background: #444;}"
+       "section#debug-information th {background: #444; white-space: nowrap;}"
+       "section#debug-information td.debug-empty {text-align: center;}"
        "</style>");
 
    Memory_Arena *arena = &request->thread.arena;
@@ -738,58 +739,6 @@ debug_output_request_data(Request_State *request)
 
    OUT("<section id=\"debug-information\">");
 
-   // Output url parameters
-   OUT("<table>");
-   OUT("<tr><th>URL Parameter</th><th>Value</th></tr>");
-   for(unsigned int index = 0; index < ARRAY_LENGTH(url->entries); ++index)
-   {
-      Key_Value_Pair *parameter = url->entries + index;
-      if(parameter->key && *parameter->key)
-      {
-         char *value = (parameter->value) ? parameter->value : "";
-         OUT("<tr>");
-         OUT("<td>%s</td>", encode_for_html(arena, parameter->key));
-         OUT("<td>%s</td>", encode_for_html(arena, value));
-         OUT("</tr>");
-      }
-   }
-   OUT("</table>");
-
-   // Output form parameters
-   OUT("<table>");
-   OUT("<tr><th>Form Parameter</th><th>Value</th></tr>");
-   for(unsigned int index = 0; index < ARRAY_LENGTH(form->entries); ++index)
-   {
-      Key_Value_Pair *parameter = form->entries + index;
-      if(parameter->key && *parameter->key)
-      {
-         char *value = (parameter->value) ? parameter->value : "";
-         OUT("<tr>");
-         OUT("<td>%s</td>", encode_for_html(arena, parameter->key));
-         OUT("<td>%s</td>", encode_for_html(arena, value));
-         OUT("</tr>");
-      }
-   }
-   OUT("</table>");
-
-   // Output form parameters
-   OUT("<table>");
-   OUT("<tr><th>Cookie</th><th>Value</th></tr>");
-   for(unsigned int index = 0; index < ARRAY_LENGTH(cookies->entries); ++index)
-   {
-      Key_Value_Pair *parameter = cookies->entries + index;
-      if(parameter->key && *parameter->key)
-      {
-         char *value = (parameter->value) ? parameter->value : "";
-         OUT("<tr>");
-         OUT("<td>%s</td>", encode_for_html(arena, parameter->key));
-         OUT("<td>%s</td>", encode_for_html(arena, value));
-         OUT("</tr>");
-      }
-   }
-   OUT("</table>");
-
-   // Output arena data
    float arena_size = (float)arena->size;
    char *units_size = "B";
    if(arena_size >= MEBIBYTES(1))
@@ -816,6 +765,8 @@ debug_output_request_data(Request_State *request)
       units_used = "KiB";
    }
 
+   OUT("<div style=\"display: flex;\">");
+   // Output arena data
    OUT("<table>");
    OUT("<tr><th colspan=\"2\">Memory Arena</th></tr>");
    OUT("<tr><td>Thread</td><td>%ld</td></tr>", request->thread.index);
@@ -823,7 +774,7 @@ debug_output_request_data(Request_State *request)
    OUT("<tr><td>Arena Used</td><td>%0.1f%s</td></tr>", arena_used, units_used);
    OUT("</table>");
 
-   OUT("<table>");
+   // Output performance timers
    OUT("<table>");
    OUT("<tr>");
    OUT("<th>Timed Profiler Block</th>");
@@ -845,6 +796,80 @@ debug_output_request_data(Request_State *request)
       }
    }
    OUT("</table>");
+   OUT("</div>");
+
+   OUT("<div style=\"display: flex;\">");
+
+   // Output url parameters
+   OUT("<table>");
+   OUT("<tr><th>URL Parameter</th><th>Value</th></tr>");
+   unsigned int url_parameter_count = 0;
+   for(unsigned int index = 0; index < ARRAY_LENGTH(url->entries); ++index)
+   {
+      Key_Value_Pair *parameter = url->entries + index;
+      if(parameter->key && *parameter->key)
+      {
+         char *value = (parameter->value) ? parameter->value : "";
+         OUT("<tr>");
+         OUT("<td>%s</td>", encode_for_html(arena, parameter->key));
+         OUT("<td>%s</td>", encode_for_html(arena, value));
+         OUT("</tr>");
+         url_parameter_count++;
+      }
+   }
+   if(url_parameter_count == 0)
+   {
+      OUT("<tr><td colspan=\"2\" class=\"debug-empty\">No entries</td></tr>");
+   }
+   OUT("</table>");
+
+   // Output form parameters
+   OUT("<table>");
+   OUT("<tr><th>Form Parameter</th><th>Value</th></tr>");
+   unsigned int form_parameter_count = 0;
+   for(unsigned int index = 0; index < ARRAY_LENGTH(form->entries); ++index)
+   {
+      Key_Value_Pair *parameter = form->entries + index;
+      if(parameter->key && *parameter->key)
+      {
+         char *value = (parameter->value) ? parameter->value : "";
+         OUT("<tr>");
+         OUT("<td>%s</td>", encode_for_html(arena, parameter->key));
+         OUT("<td>%s</td>", encode_for_html(arena, value));
+         OUT("</tr>");
+         form_parameter_count++;
+      }
+   }
+   if(form_parameter_count == 0)
+   {
+      OUT("<tr><td colspan=\"2\" class=\"debug-empty\">No entries</td></tr>");
+   }
+   OUT("</table>");
+
+   // Output cookies
+   OUT("<table>");
+   OUT("<tr><th>Cookie</th><th>Value</th></tr>");
+   unsigned int cookie_count = 0;
+   for(unsigned int index = 0; index < ARRAY_LENGTH(cookies->entries); ++index)
+   {
+      Key_Value_Pair *parameter = cookies->entries + index;
+      if(parameter->key && *parameter->key)
+      {
+         char *value = (parameter->value) ? parameter->value : "";
+         OUT("<tr>");
+         OUT("<td>%s</td>", encode_for_html(arena, parameter->key));
+         OUT("<td>%s</td>", encode_for_html(arena, value));
+         OUT("</tr>");
+         cookie_count++;
+      }
+   }
+   if(cookie_count == 0)
+   {
+      OUT("<tr><td colspan=\"2\" class=\"debug-empty\">No entries</td></tr>");
+   }
+   OUT("</table>");
+
+   OUT("</div>");
 
    // Output user accounts
    OUT("<table>");
@@ -868,6 +893,10 @@ debug_output_request_data(Request_State *request)
       OUT("</td>");
       OUT("<td>%d</td>", user->iteration_count);
       OUT("</tr>");
+   }
+   if(global_user_account_table.count == 0)
+   {
+      OUT("<tr><td colspan=\"4\" class=\"debug-empty\">No entries</td></tr>");
    }
    OUT("</table>");
 
