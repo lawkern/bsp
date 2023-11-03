@@ -135,6 +135,35 @@ PLATFORM_READ_FILE(platform_read_file)
    return result;
 }
 
+static
+PLATFORM_APPEND_FILE(platform_append_file)
+{
+   bool result = false;
+
+   HANDLE file = CreateFileA(file_name, FILE_APPEND_DATA, FILE_SHARE_READ, 0, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+   if(file != INVALID_HANDLE_VALUE)
+   {
+      DWORD bytes_written;
+      BOOL success = WriteFile(file, memory, (DWORD)size, &bytes_written, 0);
+      if(success)
+      {
+         result = true;
+      }
+      else
+      {
+         platform_log_message("[ERROR] Failed to write file: \"%s\".", file_name);
+      }
+
+      CloseHandle(file);
+   }
+   else
+   {
+      platform_log_message("[ERROR] Failed to open file: \"%s\".", file_name);
+   }
+
+   return result;
+}
+
 static HCRYPTPROV win32_global_cryptography_handle;
 
 static void
