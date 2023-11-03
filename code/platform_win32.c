@@ -61,7 +61,7 @@ static
 PLATFORM_ALLOCATE(platform_allocate)
 {
    void *result = VirtualAlloc(0, size, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
-   return(result);
+   return result;
 }
 
 static
@@ -74,6 +74,20 @@ PLATFORM_DEALLOCATE(platform_deallocate)
 }
 
 static
+PLATFORM_FREE_FILE(platform_free_file)
+{
+   if(file->memory)
+   {
+      if(!VirtualFree(file->memory, 0, MEM_RELEASE))
+      {
+         platform_log_message("[ERROR] Failed to free virtual memory.");
+      }
+   }
+
+   ZeroMemory(file, sizeof(*file));
+}
+
+static
 PLATFORM_READ_FILE(platform_read_file)
 {
    // TODO(law): Better file I/O once file access is needed anywhere besides
@@ -81,41 +95,44 @@ PLATFORM_READ_FILE(platform_read_file)
 
    // TODO(law): Handle file sizes exceeding 2^32 bytes.
 
-   char *result = 0;
+   Platform_File result = {0};
 
    WIN32_FIND_DATAA file_data;
    HANDLE find_file = FindFirstFileA(file_name, &file_data);
    if(find_file == INVALID_HANDLE_VALUE)
    {
       platform_log_message("[ERROR] Failed to read size of file: %s.", file_name);
-      return(0);
+      return result;
    }
    FindClose(find_file);
 
    size_t size = (file_data.nFileSizeHigh * (MAXDWORD + 1)) + file_data.nFileSizeLow;
    size_t allocation_size = size + 1;
-   result = platform_allocate(allocation_size);
-   if(!result)
+   result.memory = platform_allocate(allocation_size);
+   if(!result.memory)
    {
       platform_log_message("[ERROR] Failed to allocate memory for file: %s.", file_name);
-      return(0);
+      return result;
    }
 
    HANDLE file = CreateFileA(file_name, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
    DWORD bytes_read;
-   if(!ReadFile(file, result, (DWORD)size, &bytes_read, 0) || size != bytes_read)
+   if(ReadFile(file, result.memory, (DWORD)size, &bytes_read, 0) || size != bytes_read)
+   {
+      result.size = size;
+   }
+   else
    {
       platform_log_message("[ERROR] Failed to read file: %s.", file_name);
-      platform_deallocate(result);
-      return(0);
+      platform_free_file(&result);
    }
    CloseHandle(file);
 
    // NOTE(law): Append a null-terminator to the end of the file contents, in
    // cases where it's convenient to access as a C-style string.
-   result[size] = 0;
+   result.memory[size] = 0;
 
-   return(result);
+   return result;
 }
 
 static HCRYPTPROV win32_global_cryptography_handle;
@@ -241,5 +258,5 @@ main(int argument_count, char **arguments)
 
    win32_launch_request_thread(threads + 0);
 
-   return(0);
+   return 0;
 }

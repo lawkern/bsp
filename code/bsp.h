@@ -8,7 +8,29 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "bsp_memory.h"
 #include "bsp_sha256.h"
+#include "bsp_database.h"
+
+typedef enum
+{
+   CPU_TIMER_process_request,
+   CPU_TIMER_initialize_request,
+   CPU_TIMER_output_html_template,
+   CPU_TIMER_pbkdf2_hmac_sha256,
+
+   CPU_TIMER_COUNT,
+} Cpu_Timer_Id;
+
+typedef struct
+{
+   Cpu_Timer_Id id;
+   char *label;
+
+   unsigned long long start;
+   unsigned long long elapsed;
+   unsigned long long hits;
+} Cpu_Timer;
 
 #define STRINGIFY_(x) #x
 #define STRINGIFY(x) STRINGIFY_(x)
@@ -22,14 +44,6 @@
          assert(expression);                                                   \
       }                                                                        \
    } while(0)
-
-#define KILOBYTES(v) (1000LL * (v))
-#define MEGABYTES(v) (1000LL * KILOBYTES(v))
-#define GIGABYTES(v) (1000LL * MEGABYTES(v))
-
-#define KIBIBYTES(v) (1024LL * (v))
-#define MEBIBYTES(v) (1024LL * KIBIBYTES(v))
-#define GIBIBYTES(v) (1024LL * MEBIBYTES(v))
 
 #define ARRAY_LENGTH(a) (sizeof(a) / sizeof((a)[0]))
 
@@ -65,13 +79,6 @@
 
 typedef struct
 {
-   unsigned char *base_address;
-   size_t size;
-   size_t used;
-} Memory_Arena;
-
-typedef struct
-{
    char *key;
    char *value;
 } Key_Value_Pair;
@@ -81,48 +88,6 @@ typedef struct
    unsigned int count;
    Key_Value_Pair entries[1024];
 } Key_Value_Table;
-
-#define MAX_USERNAME_LENGTH 32
-#define MAX_PASSWORD_LENGTH 512
-#define SESSION_ID_LENGTH 64
-
-typedef struct
-{
-   char username[MAX_USERNAME_LENGTH + 1]; // includes null terminator
-   unsigned char salt[16];
-   unsigned char password_hash[32]; // Width of SHA256 output
-   unsigned int iteration_count;
-
-   char session_id[SESSION_ID_LENGTH + 1]; // Include null terminator
-} User_Account;
-
-typedef struct
-{
-   Platform_Semaphore semaphore;
-
-   unsigned int count;
-   User_Account users[2 * 1024 * 1024];
-} User_Account_Table;
-
-typedef enum
-{
-   CPU_TIMER_process_request,
-   CPU_TIMER_initialize_request,
-   CPU_TIMER_output_html_template,
-   CPU_TIMER_pbkdf2_hmac_sha256,
-
-   CPU_TIMER_COUNT,
-} Cpu_Timer_Id;
-
-typedef struct
-{
-   Cpu_Timer_Id id;
-   char *label;
-
-   unsigned long long start;
-   unsigned long long elapsed;
-   unsigned long long hits;
-} Cpu_Timer;
 
 typedef struct
 {

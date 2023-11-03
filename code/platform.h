@@ -57,8 +57,20 @@ static PLATFORM_DEALLOCATE(platform_deallocate);
 #define PLATFORM_LOG_MESSAGE(name) void name(char *format, ...)
 static PLATFORM_LOG_MESSAGE(platform_log_message);
 
-#define PLATFORM_READ_FILE(name) char *name(char *file_name)
+typedef struct
+{
+   size_t size;
+   unsigned char *memory;
+} Platform_File;
+
+#define PLATFORM_FREE_FILE(name) void name(Platform_File *file)
+static PLATFORM_FREE_FILE(platform_free_file);
+
+#define PLATFORM_READ_FILE(name) Platform_File name(char *file_name)
 static PLATFORM_READ_FILE(platform_read_file);
+
+#define PLATFORM_APPEND_FILE(name) bool name(char *file_name, void *memory, size_t size)
+static PLATFORM_APPEND_FILE(platform_append_file);
 
 #define PLATFORM_GENERATE_RANDOM_BYTES(name) void name(void *destination, size_t size)
 static PLATFORM_GENERATE_RANDOM_BYTES(platform_generate_random_bytes);

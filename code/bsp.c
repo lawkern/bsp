@@ -5,9 +5,9 @@
 #include "bsp.h"
 #include "bsp_memory.c"
 #include "bsp_sha256.c"
+#include "bsp_database.c"
 
-static Key_Value_Table    global_html_template_table;
-static User_Account_Table global_user_account_table;
+static Key_Value_Table global_html_templates;
 
 #define CPU_TIMER_BEGIN(label) cpu_timer_begin(&request->thread, (CPU_TIMER_##label), (#label))
 #define CPU_TIMER_END(label) cpu_timer_end(&request->thread, (CPU_TIMER_##label))
@@ -30,193 +30,20 @@ cpu_timer_end(Thread_Context *thread, Cpu_Timer_Id id)
 }
 
 static void
-import_users_from_database(User_Account_Table *table)
+output_request_header(Request_State *request, int error_code)
 {
-   // NOTE(law): User entries are stored in a flat file with the following
-   // format:
-   //
-   //   <salt><TAB><password_hash><TAB><iteration_count><TAB><username><NEWLINE>
-   //
-   // <salt> is 32 hexadecimal characters representing a 128-bit
-   // integer. <password_hash> is 64 hexadecimal characters representing a
-   // 256-bit integer. <iteration_count> is eight hexadecimal characters
-   // representing the 32-bit iteration count that is passed to the PBKDF2
-   // function for generating the password hash. <username> is a string of up to
-   // 32 8-bit characters.
-
-   // TODO(law): This structure is mainly for development purposes. I'd like to
-   // get away without needing a database indefinitely, but at the very least
-   // this could be stored more efficiently in binary.
-
-   char *database_contents = platform_read_file("users.dbsp");
-
-   if(database_contents)
-   {
-      char *scan = database_contents;
-      while(*scan)
-      {
-         User_Account user = {0};
-
-         // Consume salt
-         char *salt_start = scan;
-         while(*scan && *scan != '\t')
-         {
-            ++scan;
-         }
-         size_t salt_start_length = 2 * sizeof(user.salt);
-         ASSERT((size_t)(scan - salt_start) == salt_start_length);
-
-         hexadecimal_string_to_bytes((unsigned char *)user.salt,
-                                     sizeof(user.salt),
-                                     salt_start,
-                                     salt_start_length);
-
-         // Skip tab
-         ++scan;
-
-         // Consume password hash
-         char *hash_start = scan;
-         while(*scan && *scan != '\t')
-         {
-            ++scan;
-         }
-         size_t hash_start_length = 2 * sizeof(user.password_hash);
-         ASSERT((size_t)(scan - hash_start) == hash_start_length);
-
-         hexadecimal_string_to_bytes((unsigned char *)user.password_hash,
-                                     sizeof(user.password_hash),
-                                     hash_start,
-                                     hash_start_length);
-
-         // Skip tab
-         ++scan;
-
-         // Consume iteration count
-         char *iteration_start = scan;
-         while(*scan && *scan != '\t')
-         {
-            ++scan;
-         }
-         size_t iteration_start_length = 2 * sizeof(user.iteration_count);
-         ASSERT((size_t)(scan - iteration_start) == iteration_start_length);
-
-         char iteration_string[2 * sizeof(user.iteration_count) + 1] = {0};
-         memory_copy(iteration_string, iteration_start, iteration_start_length);
-
-         user.iteration_count = hexadecimal_string_to_integer(iteration_string);
-
-         // Skip tab
-         ++scan;
-
-         // Consume username
-         char *username_start = scan;
-         while(*scan && *scan != '\n')
-         {
-            ++scan;
-         }
-         ASSERT((scan - username_start) <= (ARRAY_LENGTH(user.username) - 1));
-         memory_copy(user.username, username_start, scan - username_start);
-
-         // Skip newline
-         ++scan;
-
-         table->users[table->count++] = user;
-      }
-
-      platform_deallocate(database_contents);
-   }
-   else
-   {
-      platform_log_message("[WARNING] Failed to open the user database.");
-   }
+   OUT("Content-type: text/html\n");
+   OUT("Status: %d\n", error_code);
+   OUT("\n");
 }
 
 static void
-insert_user(char *username,
-            unsigned char *salt,
-            unsigned char *password_hash,
-            unsigned int iteration_count)
+redirect_request(Request_State *request, char *path)
 {
-   // TODO(law): Persist changes to disc. Until then new users will only exist
-   // until the program is restarted.
-
-   // TODO(law): Taking a lock around the entire insertion process for all
-   // interactions with the user table is overkill. Determine the best way to
-   // handle multiple readers/writers here.
-
-   // TODO(law): Restructure this to use a hash table.
-
-   platform_lock(&global_user_account_table.semaphore);
-
-   if(global_user_account_table.count < ARRAY_LENGTH(global_user_account_table.users))
-   {
-      User_Account *account = global_user_account_table.users + global_user_account_table.count++;
-
-      memory_copy(account->username, username, sizeof(account->username));
-      memory_copy(account->salt, salt, sizeof(account->salt));
-      memory_copy(account->password_hash, password_hash, sizeof(account->password_hash));
-      account->iteration_count = iteration_count;
-   }
-
-   platform_unlock(&global_user_account_table.semaphore);
-}
-
-static User_Account
-get_user(char *username)
-{
-   // TODO(law): Taking a lock around the entire lookup process for all
-   // interactions with the user table is overkill. Determine the best way to
-   // handle multiple readers/writers here.
-
-   // TODO(law): Restructure this to use a hash lookup on the user name.
-
-   User_Account result = {0};
-
-   platform_lock(&global_user_account_table.semaphore);
-
-   for(unsigned int index = 0; index < global_user_account_table.count; ++index)
-   {
-      User_Account account = global_user_account_table.users[index];
-      if(strings_are_equal(account.username, username))
-      {
-         result = account;
-         break;
-      }
-   }
-
-   platform_unlock(&global_user_account_table.semaphore);
-
-   return result;
-}
-
-static User_Account
-get_user_by_session(char *session_id)
-{
-   // TODO(law): Taking a lock around the entire lookup process for all
-   // interactions with the user table is overkill. Determine the best way to
-   // handle multiple readers/writers here.
-
-   // TODO(law): Restructure this to use a hash lookup on the user name.
-
-   // TODO(law): Consolidate with get_user() function?
-
-   User_Account result = {0};
-
-   platform_lock(&global_user_account_table.semaphore);
-
-   for(unsigned int index = 0; index < global_user_account_table.count; ++index)
-   {
-      User_Account account = global_user_account_table.users[index];
-      if(strings_are_equal(account.session_id, session_id))
-      {
-         result = account;
-         break;
-      }
-   }
-
-   platform_unlock(&global_user_account_table.semaphore);
-
-   return result;
+   OUT("Content-type: text/html\n");
+   OUT("Status: 303\n");
+   OUT("Location: %s\n", path);
+   OUT("\n");
 }
 
 static void
@@ -256,19 +83,7 @@ create_session(Request_State *request, char *username)
    char session_id[SESSION_ID_LENGTH + 1] = {0};
    generate_session_id(session_id, SESSION_ID_LENGTH);
 
-   platform_lock(&global_user_account_table.semaphore);
-   {
-      for(unsigned int index = 0; index < global_user_account_table.count; ++index)
-      {
-         User_Account *user = global_user_account_table.users + index;
-         if(strings_are_equal(user->username, username))
-         {
-            memory_copy(user->session_id, session_id, SESSION_ID_LENGTH);
-            break;
-         }
-      }
-   }
-   platform_unlock(&global_user_account_table.semaphore);
+   database_update_user_session_id(username, session_id);
 
    OUT("Content-type: text/html\n");
 #if DEVELOPMENT_BUILD
@@ -276,8 +91,6 @@ create_session(Request_State *request, char *username)
 #else
    OUT("Set-Cookie: " SESSION_COOKIE_KEY "=%s; SameSite=Strict; Secure; HttpOnly\n", session_id);
 #endif
-
-   OUT("Status: 303\n");
 
    // TODO(law): Should updating the session cookie redirect back to the
    // referer? Or to a specific page?
@@ -524,7 +337,7 @@ initialize_request(Request_State *request)
    {
       // TODO(law): Check for valid existing session that matches the id
       // provided by the client.
-      User_Account user = get_user_by_session(session_id);
+      User_Account user = database_get_user_by_session(session_id);
       memory_copy(&request->user, &user, sizeof(user));
    }
 
@@ -601,8 +414,7 @@ initialize_application(void)
 #endif
 
    // NOTE(law): Read user accounts into memory.
-   platform_initialize_semaphore(&global_user_account_table.semaphore);
-   import_users_from_database(&global_user_account_table);
+   database_initialize(MEBIBYTES(512));
 
    // NOTE(law): Read html tempates into memory.
    char *template_paths[] =
@@ -623,8 +435,8 @@ initialize_application(void)
       // just for template data.
 
       char *path = template_paths[index];
-      char *template = platform_read_file(path);
-      insert_key_value(&global_html_template_table, path, template);
+      char *template = (char *)platform_read_file(path).memory;
+      insert_key_value(&global_html_templates, path, template);
    }
 }
 
@@ -703,7 +515,7 @@ output_html_template(Request_State *request, char *path)
    // be escaped to work normally (assuming that no additional arguments are
    // passed to OUT()).
 
-   char *html = get_value(&global_html_template_table, path);
+   char *html = get_value(&global_html_templates, path);
    if(html)
    {
       OUT(html);
@@ -726,6 +538,7 @@ debug_output_request_data(Request_State *request)
    OUT("<style>"
        "/* Debug Information */"
        "section#debug-information {padding: 0 1em; border-top: 1px solid #444; background: #181818;}"
+       "section#debug-information section {display: flex; align-items: flex-start;}"
        "section#debug-information table {font-family: monospace; min-width:250px; margin: 1em;}"
        "section#debug-information caption {text-align: left; font-weight: bold;}"
        "section#debug-information th {background: #444; white-space: nowrap;}"
@@ -765,7 +578,7 @@ debug_output_request_data(Request_State *request)
       units_used = "KiB";
    }
 
-   OUT("<div style=\"display: flex;\">");
+   OUT("<section>");
    // Output arena data
    OUT("<table>");
    OUT("<tr><th colspan=\"2\">Memory Arena</th></tr>");
@@ -796,9 +609,9 @@ debug_output_request_data(Request_State *request)
       }
    }
    OUT("</table>");
-   OUT("</div>");
+   OUT("</section>");
 
-   OUT("<div style=\"display: flex;\">");
+   OUT("<section>");
 
    // Output url parameters
    OUT("<table>");
@@ -869,7 +682,7 @@ debug_output_request_data(Request_State *request)
    }
    OUT("</table>");
 
-   OUT("</div>");
+   OUT("</section>");
 
    // Output user accounts
    OUT("<table>");
@@ -878,23 +691,33 @@ debug_output_request_data(Request_State *request)
    OUT("<th>Salt</th>");
    OUT("<th>Password Hash</th>");
    OUT("<th>Iteration Count</th>");
+   OUT("<th>Session ID</th>");
    OUT("</tr>");
 
-   for(unsigned int index = 0; index < global_user_account_table.count; ++index)
+   for(unsigned int index = 0; index < database.users.row_count; ++index)
    {
-      User_Account *user = global_user_account_table.users + index;
+      User_Account *user = (User_Account *)database.users.rows + index;
       OUT("<tr>");
       OUT("<td>%s</td>", encode_for_html(arena, user->username));
       OUT("<td>");
-      print_bytes(request, user->salt, 16);
+      print_bytes(request, user->salt, SALT_LENGTH);
       OUT("</td>");
       OUT("<td>");
-      print_bytes(request, user->password_hash, 32);
+      print_bytes(request, user->password_hash, PASSWORD_HASH_LENGTH);
       OUT("</td>");
       OUT("<td>%d</td>", user->iteration_count);
+      char *session_id = encode_for_html(arena, user->session_id);
+      if(string_length(session_id) > 20)
+      {
+         OUT("<td>%.*s...</td>", 20, session_id);
+      }
+      else
+      {
+         OUT("<td>%s</td>", session_id);
+      }
       OUT("</tr>");
    }
-   if(global_user_account_table.count == 0)
+   if(database.users.row_count == 0)
    {
       OUT("<tr><td colspan=\"4\" class=\"debug-empty\">No entries</td></tr>");
    }
@@ -915,23 +738,6 @@ debug_output_request_data(Request_State *request)
 }
 
 static void
-output_request_header(Request_State *request, int error_code)
-{
-   OUT("Content-type: text/html\n");
-   OUT("Status: %d\n", error_code);
-   OUT("\n");
-}
-
-static void
-redirect_request(Request_State *request, char *path)
-{
-   OUT("Content-type: text/html\n");
-   OUT("Status: 303\n");
-   OUT("Location: %s\n", path);
-   OUT("\n");
-}
-
-static void
 login_user(Request_State *request, char *username, char *password)
 {
    // NOTE(law): This and the account registration code are the only areas of
@@ -946,7 +752,7 @@ login_user(Request_State *request, char *username, char *password)
       return;
    }
 
-   User_Account user = get_user(username);
+   User_Account user = database_get_user_by_username(username);
 
    if(*user.username == 0)
    {
@@ -1007,7 +813,7 @@ register_user(Request_State *request, char *username, char *password)
       return;
    }
 
-   User_Account existing_user = get_user(username);
+   User_Account existing_user = database_get_user_by_username(username);
    if(*existing_user.username)
    {
       // "That username already exists."
@@ -1031,7 +837,7 @@ register_user(Request_State *request, char *username, char *password)
                       PBKDF2_PASSWORD_ITERATION_ACCOUNT);
    CPU_TIMER_END(pbkdf2_hmac_sha256);
 
-   insert_user(username, salt, password_hash, PBKDF2_PASSWORD_ITERATION_ACCOUNT);
+   database_insert_user(username, salt, password_hash, PBKDF2_PASSWORD_ITERATION_ACCOUNT);
 
    // NOTE(Law): Perform the login with the initial password as a sanity check
    // that things worked.
@@ -1071,7 +877,7 @@ output_html_header(Request_State *request, bool logged_in)
       OUT("<span>");
       OUT("<a href=\"/user?id=%s\">%s</a>", username, username);
       OUT(" | ");
-      OUT("<a href=\"/logout\">Logout</a>");
+      OUT("<a href=\"/logout\">Log Out</a>");
       OUT("</span>");
    }
 
@@ -1149,12 +955,12 @@ process_request(Request_State *request)
    {
       output_request_header(request, 200);
       output_html_header(request, logged_in);
-      OUT("<main>");
+      OUT("<main style=\"text-align: center;\">");
 
       char *username = get_value(url, "id");
       if(username)
       {
-         User_Account user = get_user(username);
+         User_Account user = database_get_user_by_username(username);
          if(strings_are_equal(username, request->user.username))
          {
             OUT("<p>This page is yours.</p>");
@@ -1162,7 +968,7 @@ process_request(Request_State *request)
          }
          else if(*user.username)
          {
-            OUT("<p>This page is for <strong>%s</strong>.</p>", encode_for_html(arena, user.username));
+            OUT("<p>This page belongs to <strong>%s</strong>.</p>", encode_for_html(arena, user.username));
          }
          else
          {

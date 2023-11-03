@@ -9,6 +9,7 @@
 #include <sys/random.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <errno.h>
 
 typedef struct
 {
@@ -93,12 +94,23 @@ PLATFORM_DEALLOCATE(platform_deallocate)
 }
 
 static
+PLATFORM_FREE_FILE(platform_free_file)
+{
+   if(file->memory)
+   {
+      platform_deallocate(file->memory);
+   }
+
+   zero_memory(file, sizeof(*file));
+}
+
+static
 PLATFORM_READ_FILE(platform_read_file)
 {
    // TODO(law): Better file I/O once file access is needed anywhere besides
    // program startup.
 
-   char *result = 0;
+   Platform_File result = {0};
 
    int file = open(file_name, O_RDONLY);
    if (file >= 0)
@@ -109,11 +121,12 @@ PLATFORM_READ_FILE(platform_read_file)
          size_t size = file_information.st_size;
 
          // NOTE(law): Null terminate memory so it can be used as a string.
-         result = platform_allocate(size + 1);
-         if(result)
+         result.memory = platform_allocate(size + 1);
+         if(result.memory)
          {
-            read(file, result, size);
-            result[size] = 0;
+            result.size = size;
+            read(file, result.memory, result.size);
+            result.memory[result.size] = 0;
          }
          else
          {
@@ -136,18 +149,55 @@ PLATFORM_READ_FILE(platform_read_file)
 }
 
 static
+PLATFORM_APPEND_FILE(platform_append_file)
+{
+   bool result = false;
+
+   int file = open(file_name, O_CREAT|O_WRONLY|O_APPEND, 0666);
+   if(file != -1)
+   {
+      ssize_t bytes_written = write(file, memory, size);
+      result = (bytes_written == size);
+
+      if(!result)
+      {
+         platform_log_message("[ERROR] (%d) Failed to write file: \"%s\".", errno, file_name);
+      }
+
+      close(file);
+   }
+   else
+   {
+      platform_log_message("[ERROR] (%d) Failed to open file: \"%s\".", errno, file_name);
+   }
+
+   return result;
+}
+
+static
 PLATFORM_GENERATE_RANDOM_BYTES(platform_generate_random_bytes)
 {
    zero_memory(destination, size);
-   size_t bytes_generated = getentropy(destination, size);
 
-   if(bytes_generated < 0)
+   int file = open("/dev/urandom", O_RDONLY);
+   if(file >= 0)
    {
-      platform_log_message("[ERROR] Failed to generate a random number.");
+      ssize_t bytes_generated = read(file, destination, size);
+      if(bytes_generated < 0)
+      {
+         if(bytes_generated < 0)
+         {
+            platform_log_message("[ERROR] Failed to generate a random number.");
+         }
+         else if(bytes_generated < size)
+         {
+            platform_log_message("[WARNING] Only generated %ld of requested %ld bytes.", bytes_generated, size);
+         }
+      }
    }
-   else if(bytes_generated < size)
+   else
    {
-      platform_log_message("[WARNING] Only generated %ld of requested %ld bytes.", bytes_generated, size);
+      platform_log_message("[ERROR] Failed to open /dev/urandom.");
    }
 }
 
