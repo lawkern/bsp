@@ -9,18 +9,21 @@
 #include <sys/random.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <errno.h>
 
-typedef struct
+#include <errno.h>
+#include <stdarg.h>
+#include <string.h>
+
+typedef struct Platform_Semaphore
 {
    volatile unsigned int count;
    sem_t handle;
 } Platform_Semaphore;
 
+#include "bsp.h"
 #include "platform.h"
-#include "bsp.c"
 
-static
+extern
 PLATFORM_LOG_MESSAGE(platform_log_message)
 {
    char *file_path = "logs/bsp.log";
@@ -36,17 +39,17 @@ PLATFORM_LOG_MESSAGE(platform_log_message)
    va_list arguments;
    va_start(arguments, format);
    {
-      format_string_list(message, ARRAY_LENGTH(message), format, arguments);
+      vsnprintf(message, ARRAY_LENGTH(message), format, arguments);
    }
    va_end(arguments);
 
    char log[ARRAY_LENGTH(timestamp) + ARRAY_LENGTH(message) + 1];
-   format_string(log, ARRAY_LENGTH(log), "%s%s\n", timestamp, message);
+   snprintf(log, ARRAY_LENGTH(log), "%s%s\n", timestamp, message);
 
    int file = open(file_path, O_CREAT|O_WRONLY|O_APPEND, 0666);
    if(file >= 0)
    {
-      write(file, log, string_length(log));
+      write(file, log, strlen(log));
       close(file);
    }
    else
@@ -55,7 +58,7 @@ PLATFORM_LOG_MESSAGE(platform_log_message)
    }
 }
 
-static
+extern
 PLATFORM_ALLOCATE(platform_allocate)
 {
    // NOTE(law): munmap() requires the size of the allocation in order to free
@@ -77,7 +80,7 @@ PLATFORM_ALLOCATE(platform_allocate)
    return result;
 }
 
-static
+extern
 PLATFORM_DEALLOCATE(platform_deallocate)
 {
    // NOTE(law): munmap() requires the size of the allocation in order to free
@@ -93,7 +96,7 @@ PLATFORM_DEALLOCATE(platform_deallocate)
    }
 }
 
-static
+extern
 PLATFORM_FREE_FILE(platform_free_file)
 {
    if(file->memory)
@@ -101,10 +104,10 @@ PLATFORM_FREE_FILE(platform_free_file)
       platform_deallocate(file->memory);
    }
 
-   zero_memory(file, sizeof(*file));
+   memset(file, 0, sizeof(*file));
 }
 
-static
+extern
 PLATFORM_READ_FILE(platform_read_file)
 {
    // TODO(law): Better file I/O once file access is needed anywhere besides
@@ -148,7 +151,7 @@ PLATFORM_READ_FILE(platform_read_file)
    return result;
 }
 
-static
+extern
 PLATFORM_APPEND_FILE(platform_append_file)
 {
    bool result = false;
@@ -174,10 +177,10 @@ PLATFORM_APPEND_FILE(platform_append_file)
    return result;
 }
 
-static
+extern
 PLATFORM_GENERATE_RANDOM_BYTES(platform_generate_random_bytes)
 {
-   zero_memory(destination, size);
+   memset(destination, 0, size);
 
    int file = open("/dev/urandom", O_RDONLY);
    if(file >= 0)
@@ -201,14 +204,22 @@ PLATFORM_GENERATE_RANDOM_BYTES(platform_generate_random_bytes)
    }
 }
 
-static
+static unsigned int linux_global_semaphore_count;
+static Platform_Semaphore linux_global_semaphores[128];
+
+extern
 PLATFORM_INITIALIZE_SEMAPHORE(platform_initialize_semaphore)
 {
-   semaphore->count = 0;
-   sem_init(&semaphore->handle, 0, 0);
+   ASSERT(linux_global_semaphore_count < ARRAY_LENGTH(linux_global_semaphores));
+   Platform_Semaphore *result = linux_global_semaphores + linux_global_semaphore_count++;
+
+   result->count = 0;
+   sem_init(&result->handle, 0, 0);
+
+   return result;
 }
 
-static
+extern
 PLATFORM_LOCK(platform_lock)
 {
    if(__sync_add_and_fetch(&semaphore->count, 1) > 1)
@@ -217,7 +228,7 @@ PLATFORM_LOCK(platform_lock)
    }
 }
 
-static
+extern
 PLATFORM_UNLOCK(platform_unlock)
 {
    if(__sync_sub_and_fetch(&semaphore->count, 1) > 0)
@@ -254,14 +265,13 @@ linux_launch_request_thread(void *data)
 
    while(linux_accept_request(&fcgx))
    {
-      initialize_arena(&thread.arena, base_address, arena_size);
-      zero_memory(thread.timers, sizeof(thread.timers));
+      memset(thread.timers, 0, sizeof(thread.timers));
 
       Platform_Request_State platform_request = {0};
       platform_request.fcgx = fcgx;
       platform_request.request.thread = thread;
 
-      process_request(&platform_request.request);
+      bsp_process_request(&platform_request.request, base_address, arena_size);
 
       FCGX_Finish_r(&fcgx);
    }
@@ -283,7 +293,7 @@ main(int argument_count, char **arguments)
    // to data assets (html, css, logs, etc.).
    chdir(STRINGIFY(WORKING_DIRECTORY));
 
-   initialize_application();
+   bsp_initialize_application();
 
    FCGX_Init();
 

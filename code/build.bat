@@ -8,7 +8,6 @@ SET CODE_PATH=..\code
 SET DATA_PATH=..\data
 SET BUILD_PATH=..\build
 
-SET PACKAGE_PATH=d:\bsp\build\bsp-package
 SET DEPLOYMENT_PATH=d:\inetpub\bsp
 
 SET COMPILER_FLAGS=-nologo -Z7 -Od -FC -diagnostics:column
@@ -35,25 +34,21 @@ SET INCLUDE=%CODE_PATH%;%INCLUDE%
 SET LIB=%BUILD_PATH%;%LIB%
 
 REM NOTE(law): Compile the executable.
-cl %CODE_PATH%\platform_win32.c %COMPILER_FLAGS% -Febsp /link %LINKER_FLAGS%
+cl %CODE_PATH%\platform_win32.c %CODE_PATH%\bsp.c %COMPILER_FLAGS% -Febsp /link %LINKER_FLAGS%
 
 REM NOTE(law): Create the package directories.
-IF NOT EXIST %PACKAGE_PATH%      mkdir %PACKAGE_PATH%
-IF NOT EXIST %PACKAGE_PATH%\css  mkdir %PACKAGE_PATH%\css
-IF NOT EXIST %PACKAGE_PATH%\html mkdir %PACKAGE_PATH%\html
-IF NOT EXIST %PACKAGE_PATH%\logs mkdir %PACKAGE_PATH%\logs
+IF NOT EXIST %DEPLOYMENT_PATH%      mkdir %DEPLOYMENT_PATH%
+IF NOT EXIST %DEPLOYMENT_PATH%\css  mkdir %DEPLOYMENT_PATH%\css
+IF NOT EXIST %DEPLOYMENT_PATH%\html mkdir %DEPLOYMENT_PATH%\html
+IF NOT EXIST %DEPLOYMENT_PATH%\logs mkdir %DEPLOYMENT_PATH%\logs
 
 REM NOTE(law) Copy executables into package.
-copy %BUILD_PATH%\bsp.exe     %PACKAGE_PATH%\
-copy %BUILD_PATH%\libfcgi.dll %PACKAGE_PATH%\
+copy %BUILD_PATH%\bsp.exe     %DEPLOYMENT_PATH%\
+copy %BUILD_PATH%\libfcgi.dll %DEPLOYMENT_PATH%\
 
 REM NOTE(law) Copy data assets into package.
-copy %DATA_PATH%\favicon.ico  %PACKAGE_PATH%\
-copy %DATA_PATH%\css\*        %PACKAGE_PATH%\css\
-copy %DATA_PATH%\html\*       %PACKAGE_PATH%\html\
-
-REM NOTE(law) Copy package to deployment directory.
-rmdir /s /q %DEPLOYMENT_PATH%
-move %PACKAGE_PATH% %DEPLOYMENT_PATH%
+copy %DATA_PATH%\favicon.ico  %DEPLOYMENT_PATH%\
+copy %DATA_PATH%\css\*        %DEPLOYMENT_PATH%\css\
+copy %DATA_PATH%\html\*       %DEPLOYMENT_PATH%\html\
 
 POPD

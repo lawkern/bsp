@@ -1,20 +1,23 @@
 #include <windows.h>
 #include <wincrypt.h>
+
+#include <stdarg.h>
+#include <string.h>
 #include <time.h>
 
-typedef struct
+typedef struct Platform_Semaphore
 {
    volatile LONG count;
    HANDLE handle;
 } Platform_Semaphore;
 
+#include "bsp.h"
 #include "platform.h"
-#include "bsp.c"
 
 static HANDLE win32_global_request_mutex;
 static HANDLE win32_global_log_mutex;
 
-static
+extern
 PLATFORM_LOG_MESSAGE(platform_log_message)
 {
    char *file_path = "logs/bsp.log";
@@ -32,12 +35,12 @@ PLATFORM_LOG_MESSAGE(platform_log_message)
    va_list arguments;
    va_start(arguments, format);
    {
-      format_string_list(message, ARRAY_LENGTH(message), format, arguments);
+      vsnprintf(message, ARRAY_LENGTH(message), format, arguments);
    }
    va_end(arguments);
 
    char log[ARRAY_LENGTH(timestamp) + ARRAY_LENGTH(message) + 1];
-   format_string(log, ARRAY_LENGTH(log), "%s%s\n", timestamp, message);
+   snprintf(log, ARRAY_LENGTH(log), "%s%s\n", timestamp, message);
 
    WaitForSingleObject(win32_global_log_mutex, INFINITE);
    {
@@ -45,7 +48,7 @@ PLATFORM_LOG_MESSAGE(platform_log_message)
       if(file != INVALID_HANDLE_VALUE)
       {
          DWORD bytes_written;
-         BOOL success = WriteFile(file, log, (DWORD)string_length(log), &bytes_written, 0);
+         BOOL success = WriteFile(file, log, (DWORD)strlen(log), &bytes_written, 0);
          CloseHandle(file);
       }
       else
@@ -57,14 +60,14 @@ PLATFORM_LOG_MESSAGE(platform_log_message)
    ReleaseMutex(win32_global_log_mutex);
 }
 
-static
+extern
 PLATFORM_ALLOCATE(platform_allocate)
 {
    void *result = VirtualAlloc(0, size, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
    return result;
 }
 
-static
+extern
 PLATFORM_DEALLOCATE(platform_deallocate)
 {
    if(!VirtualFree(memory, 0, MEM_RELEASE))
@@ -73,7 +76,7 @@ PLATFORM_DEALLOCATE(platform_deallocate)
    }
 }
 
-static
+extern
 PLATFORM_FREE_FILE(platform_free_file)
 {
    if(file->memory)
@@ -87,7 +90,7 @@ PLATFORM_FREE_FILE(platform_free_file)
    ZeroMemory(file, sizeof(*file));
 }
 
-static
+extern
 PLATFORM_READ_FILE(platform_read_file)
 {
    // TODO(law): Better file I/O once file access is needed anywhere besides
@@ -135,7 +138,7 @@ PLATFORM_READ_FILE(platform_read_file)
    return result;
 }
 
-static
+extern
 PLATFORM_APPEND_FILE(platform_append_file)
 {
    bool result = false;
@@ -177,7 +180,7 @@ win32_initialize_random_number_generator(void)
    }
 }
 
-static
+extern
 PLATFORM_GENERATE_RANDOM_BYTES(platform_generate_random_bytes)
 {
    SecureZeroMemory(destination, size);
@@ -189,14 +192,22 @@ PLATFORM_GENERATE_RANDOM_BYTES(platform_generate_random_bytes)
    }
 }
 
-static
+static unsigned int win32_global_semaphore_count;
+static Platform_Semaphore win32_global_semaphores[128];
+
+extern
 PLATFORM_INITIALIZE_SEMAPHORE(platform_initialize_semaphore)
 {
-   semaphore->count = 0;
-   semaphore->handle = CreateSemaphoreA(0, 0, REQUEST_THREAD_COUNT, 0);
+   ASSERT(win32_global_semaphore_count < ARRAY_LENGTH(win32_global_semaphores));
+   struct Platform_Semaphore *result = win32_global_semaphores + win32_global_semaphore_count++;
+
+   result->count = 0;
+   result->handle = CreateSemaphoreA(0, 0, REQUEST_THREAD_COUNT, 0);
+
+   return result;
 }
 
-static
+extern
 PLATFORM_LOCK(platform_lock)
 {
    if(InterlockedIncrement(&semaphore->count) > 1)
@@ -205,7 +216,7 @@ PLATFORM_LOCK(platform_lock)
    }
 }
 
-static
+extern
 PLATFORM_UNLOCK(platform_unlock)
 {
    if(InterlockedDecrement(&semaphore->count) > 0)
@@ -242,14 +253,13 @@ win32_launch_request_thread(VOID *data)
 
    while(win32_accept_request(&fcgx))
    {
-      initialize_arena(&thread.arena, base_address, arena_size);
       ZeroMemory(thread.timers, sizeof(thread.timers));
 
       Platform_Request_State platform_request = {0};
       platform_request.fcgx = fcgx;
       platform_request.request.thread = thread;
 
-      process_request(&platform_request.request);
+      bsp_process_request(&platform_request.request, base_address, arena_size);
 
       FCGX_Finish_r(&fcgx);
    }
@@ -267,7 +277,7 @@ main(int argument_count, char **arguments)
 
    win32_initialize_random_number_generator();
 
-   initialize_application();
+   bsp_initialize_application();
 
    FCGX_Init();
    win32_global_socket = FCGX_OpenSocket(":" STRINGIFY(APPLICATION_PORT), 1024);

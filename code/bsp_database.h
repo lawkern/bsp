@@ -23,7 +23,7 @@ typedef struct
 
 typedef struct
 {
-   Platform_Semaphore semaphore;
+   struct Platform_Semaphore *semaphore;
    char *file_path;
 
    unsigned int max_row_count;

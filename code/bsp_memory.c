@@ -2,6 +2,7 @@
 /* (c) copyright 2022 Lawrence D. Kern /////////////////////////////////////// */
 /* /////////////////////////////////////////////////////////////////////////// */
 
+#include <stdarg.h>
 #include <stdlib.h>
 
 // TODO(law): All of the hand-written memory/string operations in this file are

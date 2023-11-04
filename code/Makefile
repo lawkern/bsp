@@ -12,7 +12,7 @@ DEPLOYMENT_PATH = /srv/bsp
 CC      = clang
 LDFLAGS = -lfcgi -lpthread
 
-CFLAGS  = -std=c99 -Wall -Werror -Wno-unused-function -Wno-deprecated-declarations
+CFLAGS  = -Wall -Werror -Wno-unused-function -Wno-deprecated-declarations
 CFLAGS += -DWORKING_DIRECTORY=$(DEPLOYMENT_PATH)
 CFLAGS += -DREQUEST_THREAD_COUNT=$(REQUEST_THREAD_COUNT)
 
@@ -30,7 +30,11 @@ development::
 	@echo "BSP Development Build"
 	@echo "====================="
 	@mkdir -p $(BUILD_PATH)
-	@$(CC) platform_linux.c -o $(BUILD_PATH)/bsp $(CFLAGS_DEVELOPMENT) $(LDFLAGS)
+
+	@$(CC) bsp.c -o $(BUILD_PATH)/bsp.o -c -std=c99 $(CFLAGS_DEVELOPMENT)
+	@$(CC) platform_linux.c -o $(BUILD_PATH)/platform_linux.o -c -std=gnu99 $(CFLAGS_DEVELOPMENT)
+
+	@make link
 	@make package
 	@make deploy
 
@@ -39,21 +43,29 @@ production::
 	@echo "BSP Production Build"
 	@echo "===================="
 	@mkdir -p $(BUILD_PATH)
-	@$(CC) platform_linux.c -o $(BUILD_PATH)/bsp $(CFLAGS_PRODUCTION) $(LDFLAGS)
+
+	@$(CC) bsp.c -o $(BUILD_PATH)/bsp.o -c -std=c99 $(CFLAGS_PRODUCTION)
+	@$(CC) platform_linux.c -o $(BUILD_PATH)/platform_linux.o -c -std=gnu99 $(CFLAGS_PRODUCTION)
+
+	@make link
 	@make package
 	@make deploy
 
+link::
+	@$(CC) $(BUILD_PATH)/platform_linux.o $(BUILD_PATH)/bsp.o -o $(BUILD_PATH)/bsp $(LDFLAGS)
+
 package::
-	@rm -rf   $(PACKAGE_PATH)
-	@mkdir -p $(PACKAGE_PATH)/css
-	@mkdir -p $(PACKAGE_PATH)/html
-	@mkdir -p $(PACKAGE_PATH)/logs
-	@cp    $(BUILD_PATH)/bsp        $(PACKAGE_PATH)/
-	@cp    $(DATA_PATH)/favicon.ico $(PACKAGE_PATH)/
-	@cp -r $(DATA_PATH)/css/*       $(PACKAGE_PATH)/css/
-	@cp -r $(DATA_PATH)/html/*      $(PACKAGE_PATH)/html/
+	@mkdir -p $(DEPLOYMENT_PATH)
+	@mkdir -p $(DEPLOYMENT_PATH)/css
+	@mkdir -p $(DEPLOYMENT_PATH)/html
+	@mkdir -p $(DEPLOYMENT_PATH)/logs
+
+	@rm $(DEPLOYMENT_PATH)/bsp
+
+	@cp    $(BUILD_PATH)/bsp        $(DEPLOYMENT_PATH)/
+	@cp    $(DATA_PATH)/favicon.ico $(DEPLOYMENT_PATH)/
+	@cp -r $(DATA_PATH)/css/*       $(DEPLOYMENT_PATH)/css/
+	@cp -r $(DATA_PATH)/html/*      $(DEPLOYMENT_PATH)/html/
 
 deploy::
-	@rm -rf $(DEPLOYMENT_PATH)/bsp
-	@cp -r $(PACKAGE_PATH)/ $(DEPLOYMENT_PATH)/
 	@bash -c "$(MISC_PATH)/restart_bsp.sh $(APPLICATION_PORT) $(DEPLOYMENT_PATH)/bsp"

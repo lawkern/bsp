@@ -3,6 +3,8 @@
 /* /////////////////////////////////////////////////////////////////////////// */
 
 #include "bsp.h"
+#include "platform.h"
+
 #include "bsp_memory.c"
 #include "bsp_sha256.c"
 #include "bsp_database.c"
@@ -304,7 +306,7 @@ get_value(Key_Value_Table *table, char *key)
 }
 
 static void
-initialize_request(Request_State *request)
+initialize_request(Request_State *request, unsigned char *arena_base_address, size_t arena_size)
 {
    CPU_TIMER_BEGIN(initialize_request);
 
@@ -316,6 +318,7 @@ initialize_request(Request_State *request)
 #undef X
 
    Memory_Arena *arena = &request->thread.arena;
+   initialize_arena(arena, arena_base_address, arena_size);
 
    Key_Value_Table *url = &request->url;
    Key_Value_Table *form = &request->form;
@@ -399,8 +402,8 @@ initialize_request(Request_State *request)
    CPU_TIMER_END(initialize_request);
 }
 
-static void
-initialize_application(void)
+extern
+BSP_INITIALIZE_APPLICATION(bsp_initialize_application)
 {
    // NOTE(law): This function is called once at program startup. It assumes
    // resources are released automatically when the program exits (i.e. this
@@ -719,7 +722,7 @@ debug_output_request_data(Request_State *request)
    }
    if(database.users.row_count == 0)
    {
-      OUT("<tr><td colspan=\"4\" class=\"debug-empty\">No entries</td></tr>");
+      OUT("<tr><td colspan=\"5\" class=\"debug-empty\">No entries</td></tr>");
    }
    OUT("</table>");
 
@@ -884,13 +887,12 @@ output_html_header(Request_State *request, bool logged_in)
    OUT("</header>");
 }
 
-static void
-process_request(Request_State *request)
+extern
+BSP_PROCESS_REQUEST(bsp_process_request)
 {
    CPU_TIMER_BEGIN(process_request);
 
-   initialize_request(request);
-
+   initialize_request(request, arena_base_address, arena_size);
    platform_log_message("%s request to \"%s\" received by thread %ld.",
                         request->REQUEST_METHOD,
                         request->SCRIPT_NAME,

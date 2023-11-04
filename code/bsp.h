@@ -8,6 +8,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
+// #include "platform.h"
+
 #include "bsp_memory.h"
 #include "bsp_sha256.h"
 #include "bsp_database.h"

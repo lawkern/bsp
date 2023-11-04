@@ -15,9 +15,9 @@ database_initialize_table(Database_Table *result, size_t row_size, char *file_pa
    // get away without needing a real database indefinitely.
 
    zero_memory(result, sizeof(Database_Table));
-
-   platform_initialize_semaphore(&result->semaphore);
    result->file_path = file_path;
+
+   result->semaphore = platform_initialize_semaphore();
 
    result->max_row_count = 10000;
    result->rows = PUSH_SIZE(&database.arena, row_size * result->max_row_count);
@@ -48,7 +48,7 @@ database_initialize_table(Database_Table *result, size_t row_size, char *file_pa
    }
    else
    {
-      platform_log_message("[WARNING] The database table %s was found.", file_path);
+      platform_log_message("[WARNING] The database table %s was not found.", file_path);
    }
 }
 
@@ -73,7 +73,7 @@ database_insert_user(char *username,
 
    // TODO(law): Restructure this to use a hash table.
 
-   platform_lock(&database.users.semaphore);
+   platform_lock(database.users.semaphore);
 
    if(database.users.row_count < database.users.max_row_count)
    {
@@ -89,7 +89,7 @@ database_insert_user(char *username,
       platform_append_file(database.users.file_path, user, sizeof(*user));
    }
 
-   platform_unlock(&database.users.semaphore);
+   platform_unlock(database.users.semaphore);
 }
 
 static User_Account
@@ -103,7 +103,7 @@ database_get_user_by_username(char *username)
 
    User_Account result = {0};
 
-   platform_lock(&database.users.semaphore);
+   platform_lock(database.users.semaphore);
 
    for(unsigned int index = 0; index < database.users.row_count; ++index)
    {
@@ -115,7 +115,7 @@ database_get_user_by_username(char *username)
       }
    }
 
-   platform_unlock(&database.users.semaphore);
+   platform_unlock(database.users.semaphore);
 
    return result;
 }
@@ -131,7 +131,7 @@ database_get_user_by_session(char *session_id)
 
    // TODO(law): Restructure this to use a hash lookup on the username.
 
-   platform_lock(&database.users.semaphore);
+   platform_lock(database.users.semaphore);
 
    for(unsigned int index = 0; index < database.users.row_count; ++index)
    {
@@ -143,7 +143,7 @@ database_get_user_by_session(char *session_id)
       }
    }
 
-   platform_unlock(&database.users.semaphore);
+   platform_unlock(database.users.semaphore);
 
    return result;
 }
@@ -151,7 +151,7 @@ database_get_user_by_session(char *session_id)
 static void
 database_update_user_session_id(char *username, char *session_id)
 {
-   platform_lock(&database.users.semaphore);
+   platform_lock(database.users.semaphore);
 
    for(unsigned int index = 0; index < database.users.row_count; ++index)
    {
@@ -163,5 +163,5 @@ database_update_user_session_id(char *username, char *session_id)
       }
    }
 
-   platform_unlock(&database.users.semaphore);
+   platform_unlock(database.users.semaphore);
 }
